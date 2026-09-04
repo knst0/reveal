@@ -28,6 +28,7 @@ clap = { version = "4", features = ["derive"] }
 crossbeam-channel = "0.5"
 directories-next = "2"
 env_logger = "0.11"
+fast_image_resize = { version = "6.1", features = ["rayon"] }
 gpui = "0.2"
 image = "0.25"
 jxl-oxide = "0.12"
@@ -49,6 +50,7 @@ usvg = "0.48"
 winres = "0.1.12"
 
 [dev-dependencies]
+criterion = "0.8"
 zune-core = "0.5"
 zune-jpegxl = "0.5.2"
 
@@ -62,3 +64,7 @@ incremental = false
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[[bench]]
+name = "resize"
+harness = false

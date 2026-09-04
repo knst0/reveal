@@ -6,6 +6,7 @@ pub use transform::{FitMode, ViewTransform};
 
 use std::sync::Arc;
 
+use fast_image_resize::{self as fr, images::Image as FrImage, images::ImageRef};
 use gpui::RenderImage;
 use image::{Delay, Frame, RgbaImage};
 
@@ -46,10 +47,10 @@ impl Resample {
         if antialias { Resample::Filtered } else { Resample::Nearest }
     }
 
-    fn filter_type(self) -> image::imageops::FilterType {
+    fn algorithm(self) -> fr::ResizeAlg {
         match self {
-            Resample::Filtered => image::imageops::FilterType::Lanczos3,
-            Resample::Nearest => image::imageops::FilterType::Nearest,
+            Resample::Filtered => fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3),
+            Resample::Nearest => fr::ResizeAlg::Nearest,
         }
     }
 }
@@ -77,10 +78,24 @@ pub fn downscale_to_display_with(
     let width = ((image.width as f32 * scale).round() as u32).max(1);
     let height = ((image.height as f32 * scale).round() as u32).max(1);
 
-    let source = RgbaImage::from_raw(image.width, image.height, image.rgba.clone())
-        .expect("decoded buffer must match its dimensions");
-    let resized = image::imageops::resize(&source, width, height, resample.filter_type());
-    DecodedImage { width, height, rgba: resized.into_raw() }
+    resize_rgba(image, width, height, resample).unwrap_or_else(|_| DecodedImage {
+        width,
+        height,
+        rgba: vec![0; (width * height * 4) as usize],
+    })
+}
+
+fn resize_rgba(
+    image: &DecodedImage,
+    width: u32,
+    height: u32,
+    resample: Resample,
+) -> Result<DecodedImage, Box<dyn std::error::Error>> {
+    let source = ImageRef::new(image.width, image.height, &image.rgba, fr::PixelType::U8x4)?;
+    let mut destination = FrImage::new(width, height, fr::PixelType::U8x4);
+    let options = fr::ResizeOptions::new().resize_alg(resample.algorithm());
+    fr::Resizer::new().resize(&source, &mut destination, &options)?;
+    Ok(DecodedImage { width, height, rgba: destination.into_vec() })
 }
 
 pub const MAX_MAGNIFY_FACTOR: u32 = 64;
