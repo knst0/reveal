@@ -245,6 +245,12 @@ impl Render for RevealApp {
                 }),
             )
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _window, cx| {
+                if event.pressed_button != Some(MouseButton::Left) {
+                    if this.drag_from.take().is_some() {
+                        cx.notify();
+                    }
+                    return;
+                }
                 let Some((px_, py)) = this.drag_from else {
                     return;
                 };
