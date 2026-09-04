@@ -1,0 +1,6 @@
+/target
+/.idea
+
+# Agents
+/.claude
+/nul
