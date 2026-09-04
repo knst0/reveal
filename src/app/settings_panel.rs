@@ -138,6 +138,33 @@ impl RevealApp {
                         }))
                     })),
             )
+            .child(section_label(p, "File associations"))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex_grow()
+                            .flex()
+                            .flex_col()
+                            .child(div().child("Default image viewer"))
+                            .child(
+                                div()
+                                    .text_color(ui::color(p.text_muted))
+                                    .child(associations_hint()),
+                            ),
+                    )
+                    .child(ui::toast_button("set-defaults", p, "Set defaults", false).on_click(
+                        cx.listener(|this, _e, _w, cx| {
+                            if let Some(state) = this.settings.as_mut() {
+                                state.register_associations();
+                            }
+                            cx.notify();
+                        }),
+                    )),
+            )
             .child(div().text_color(ui::color(p.text_muted)).child(config_location_hint()))
     }
 
@@ -352,5 +379,15 @@ fn config_location_hint() -> String {
     match reveal::config::config_path() {
         Some(path) => format!("Saved to {}", path.display()),
         None => "Configuration directory unavailable.".to_owned(),
+    }
+}
+
+fn associations_hint() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "Register Reveal for all supported formats, then confirm in Windows Settings."
+    } else if cfg!(target_os = "macos") {
+        "Register Reveal.app with Launch Services so it appears under Open With."
+    } else {
+        "Claim the supported image types via xdg-mime."
     }
 }
