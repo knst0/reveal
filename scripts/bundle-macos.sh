@@ -16,7 +16,7 @@ if [ -f resource/macos/reveal.icns ]; then
   cp resource/macos/reveal.icns "$APP/Contents/Resources/reveal.icns"
 fi
 
-cargo run --quiet --bin info-plist -- "$VERSION" > "$APP/Contents/Info.plist"
+cargo run --quiet --features tools --bin info-plist -- "$VERSION" > "$APP/Contents/Info.plist"
 
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 

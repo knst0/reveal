@@ -17,10 +17,25 @@ pkg-fmt = "tgz"
 [package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
 pkg-fmt = "zip"
 
+[[bin]]
+name = "reveal"
+path = "src/main.rs"
+
+[[bin]]
+name = "gen-icons"
+path = "src/bin/gen-icons.rs"
+required-features = ["tools"]
+
+[[bin]]
+name = "info-plist"
+path = "src/bin/info-plist.rs"
+required-features = ["tools"]
+
 [features]
 default = ["raw", "updates"]
 raw = ["dep:rawler"]
 updates = ["dep:self_update"]
+tools = []
 
 [dependencies]
 arboard = "3.6"
