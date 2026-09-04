@@ -41,6 +41,7 @@ pub struct RevealApp {
     pub update_notice: Option<UpdateNotice>,
     pub update_busy: bool,
     pub drop_hover: bool,
+    pub dialog_open: bool,
 }
 
 pub struct AppInit {
@@ -73,6 +74,7 @@ impl RevealApp {
             update_notice: None,
             update_busy: false,
             drop_hover: false,
+            dialog_open: false,
             theme,
             viewer,
         };

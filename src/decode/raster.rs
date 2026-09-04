@@ -9,6 +9,11 @@ use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame, e
 
 pub struct RasterDecoder;
 
+pub const RASTER_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "tga", "dds", "ff", "avif",
+    "qoi", "pnm", "pbm", "pgm", "ppm", "pam", "exr", "hdr",
+];
+
 pub fn is_raster_extension(ext: &str) -> bool {
     ImageFormat::from_extension(ext).is_some()
 }
@@ -100,5 +105,17 @@ impl Decoder for RasterDecoder {
         reader.set_format(format);
         let img = reader.decode().map_err(map_err)?;
         Ok(Decoded::Still(to_decoded_image(img)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RASTER_EXTENSIONS, is_raster_extension};
+
+    #[test]
+    fn every_listed_raster_extension_is_actually_supported() {
+        for ext in RASTER_EXTENSIONS {
+            assert!(is_raster_extension(ext), "{ext} is listed but not decodable");
+        }
     }
 }

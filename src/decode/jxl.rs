@@ -10,6 +10,8 @@ const CODESTREAM_SIGNATURE: [u8; 2] = [0xff, 0x0a];
 const CONTAINER_SIGNATURE: [u8; 12] =
     [0x00, 0x00, 0x00, 0x0c, b'J', b'X', b'L', b' ', 0x0d, 0x0a, 0x87, 0x0a];
 
+pub const JXL_EXTENSIONS: &[&str] = &["jxl"];
+
 pub fn is_jxl_extension(ext: &str) -> bool {
     ext == "jxl"
 }

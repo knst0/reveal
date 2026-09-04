@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Action {
+    FileOpen,
+    FolderOpen,
     ImgNext,
     ImgPrev,
     ImgOrig,
@@ -30,6 +32,8 @@ pub enum Action {
 impl Action {
     pub fn name(self) -> &'static str {
         match self {
+            Action::FileOpen => "file_open",
+            Action::FolderOpen => "folder_open",
             Action::ImgNext => "img_next",
             Action::ImgPrev => "img_prev",
             Action::ImgOrig => "img_orig",
@@ -62,6 +66,8 @@ impl Action {
 }
 
 pub const ALL_ACTIONS: &[Action] = &[
+    Action::FileOpen,
+    Action::FolderOpen,
     Action::ImgNext,
     Action::ImgPrev,
     Action::ImgOrig,
@@ -221,6 +227,8 @@ impl Bindings {
 }
 
 pub const DEFAULT_BINDINGS: &[(Action, &[&str])] = &[
+    (Action::FileOpen, &["CmdCtrl+o"]),
+    (Action::FolderOpen, &["CmdCtrl+shift+o"]),
     (Action::ImgNext, &["d", "right", "pagedown"]),
     (Action::ImgPrev, &["a", "left", "pageup"]),
     (Action::ImgOrig, &["q", "1"]),

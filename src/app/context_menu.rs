@@ -30,9 +30,20 @@ impl RevealApp {
                 }))
         };
 
+        let item_always = |id: &'static str, label: &'static str, action: Action| {
+            MenuItem::new(id, label).keybinding(self.keys_for(action)).render(p).on_click(
+                cx.listener(move |this, _e, window, cx| {
+                    this.context_menu = None;
+                    this.run(action, window, cx);
+                }),
+            )
+        };
         div().absolute().left(px(at.0)).top(px(at.1)).child(
             ui::menu_surface(p)
                 .occlude()
+                .child(item_always("cm-open-file", "Open Image\u{2026}", Action::FileOpen))
+                .child(item_always("cm-open-folder", "Open Folder\u{2026}", Action::FolderOpen))
+                .child(ui::menu_separator(p))
                 .child(item("cm-next", "Next Image", Action::ImgNext))
                 .child(item("cm-prev", "Previous Image", Action::ImgPrev))
                 .child(ui::menu_separator(p))

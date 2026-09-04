@@ -5,6 +5,8 @@ use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, extensio
 
 pub struct SvgDecoder;
 
+pub const SVG_EXTENSIONS: &[&str] = &["svg", "svgz"];
+
 pub fn is_svg_extension(ext: &str) -> bool {
     matches!(ext, "svg" | "svgz")
 }

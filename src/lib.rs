@@ -3,6 +3,7 @@ pub mod associations;
 pub mod cache;
 pub mod config;
 pub mod decode;
+pub mod dialog;
 pub mod directory;
 pub mod drop;
 pub mod formats;

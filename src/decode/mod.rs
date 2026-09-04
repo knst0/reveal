@@ -105,6 +105,17 @@ pub fn is_supported(path: &Path) -> bool {
     false
 }
 
+pub fn supported_extensions() -> Vec<&'static str> {
+    let mut list: Vec<&'static str> = raster::RASTER_EXTENSIONS.to_vec();
+    list.extend_from_slice(svg::SVG_EXTENSIONS);
+    list.extend_from_slice(jxl::JXL_EXTENSIONS);
+    #[cfg(feature = "raw")]
+    list.extend_from_slice(raw::RAW_EXTENSIONS);
+    list.sort_unstable();
+    list.dedup();
+    list
+}
+
 pub fn exif_orientation(bytes: &[u8]) -> Orientation {
     let mut cursor = std::io::Cursor::new(bytes);
     let reader = exif::Reader::new();

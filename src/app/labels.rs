@@ -53,6 +53,8 @@ pub fn pretty_key(key: &str) -> String {
 
 pub fn action_label(action: Action) -> &'static str {
     match action {
+        Action::FileOpen => "Open Image\u{2026}",
+        Action::FolderOpen => "Open Folder\u{2026}",
         Action::ImgNext => "Next Image",
         Action::ImgPrev => "Previous Image",
         Action::ImgOrig => "Original Size",

@@ -6,7 +6,7 @@ use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, extensio
 
 pub struct RawDecoder;
 
-const RAW_EXTENSIONS: &[&str] = &[
+pub const RAW_EXTENSIONS: &[&str] = &[
     "cr2", "cr3", "crw", "nef", "nrw", "arw", "srf", "sr2", "orf", "rw2", "raf", "dng", "pef",
     "erf", "kdc", "dcr", "mrw", "3fr", "iiq", "mos", "srw", "x3f",
 ];

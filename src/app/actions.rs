@@ -12,6 +12,7 @@ impl RevealApp {
         action: Action,
         centre: (f32, f32),
         window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> bool {
         if action != Action::ImgDel {
             self.confirm_delete = false;
@@ -20,6 +21,8 @@ impl RevealApp {
             self.context_menu = None;
         }
         match action {
+            Action::FileOpen => self.open_via_dialog(false, cx),
+            Action::FolderOpen => self.open_via_dialog(true, cx),
             Action::ImgNext => self.viewer.navigate(Navigation::Next),
             Action::ImgPrev => self.viewer.navigate(Navigation::Prev),
             Action::ImgOrig => self.viewer.set_fit(FitMode::Original),
@@ -72,6 +75,30 @@ impl RevealApp {
         true
     }
 
+    pub fn open_via_dialog(&mut self, folder: bool, cx: &mut Context<Self>) {
+        if self.dialog_open {
+            return;
+        }
+        self.dialog_open = true;
+        let start_in = reveal::dialog::start_directory(self.viewer.current_path());
+        cx.spawn(async move |this, cx| {
+            let picked = if folder {
+                reveal::dialog::pick_folder(start_in).await
+            } else {
+                reveal::dialog::pick_image(start_in).await
+            };
+            this.update(cx, |this, cx| {
+                this.dialog_open = false;
+                if let Some(picked) = picked {
+                    this.open_dropped(std::slice::from_ref(&picked));
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     pub fn copy_current(&mut self) {
         if let Some(output) = self.viewer.current_output()
             && let Err(e) = reveal::actions::copy_to_clipboard(&output.decoded)
@@ -113,14 +140,14 @@ impl RevealApp {
         }
 
         let centre = (self.viewer.viewport.0 / 2.0, self.viewer.viewport.1 / 2.0);
-        if self.apply_action(action, centre, window) {
+        if self.apply_action(action, centre, window, cx) {
             cx.notify();
         }
     }
 
     pub fn run(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
         let centre = (self.viewer.viewport.0 / 2.0, self.viewer.viewport.1 / 2.0);
-        self.apply_action(action, centre, window);
+        self.apply_action(action, centre, window, cx);
         cx.notify();
     }
 
