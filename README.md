@@ -5,11 +5,14 @@
 
 A fast image viewer.
 
+<img width="1376" height="926" alt="screenshot2_transparent" src="https://github.com/user-attachments/assets/ea0da908-6125-49d7-a696-8f5bc254118c" />
+
 ## Install
 
 ```sh
 cargo install reveal
 ```
+
 
 ## License
 
