@@ -39,6 +39,7 @@ impl RevealApp {
                     .occlude()
                     .w(px(PANEL_WIDTH))
                     .h(px(PANEL_HEIGHT))
+                    .text_size(px(12.))
                     .flex()
                     .flex_col()
                     .overflow_hidden()
@@ -108,9 +109,7 @@ impl RevealApp {
         }
 
         self.settings_body()
-            .children(notice.map(|text| {
-                div().text_size(px(11.)).text_color(ui::color(p.text_accent)).child(text)
-            }))
+            .children(notice.map(|text| div().text_color(ui::color(p.text_accent)).child(text)))
             .child(section_label(p, "Appearance"))
             .children(appearance)
             .child(section_label(p, "Updates"))
@@ -120,7 +119,7 @@ impl RevealApp {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(div().flex_grow().text_size(px(11.)).child("Release channel"))
+                    .child(div().flex_grow().child("Release channel"))
                     .children([Channel::Stable, Channel::Beta].into_iter().map(|option| {
                         ui::chip(
                             match option {
@@ -139,12 +138,7 @@ impl RevealApp {
                         }))
                     })),
             )
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(ui::color(p.text_muted))
-                    .child(config_location_hint()),
-            )
+            .child(div().text_color(ui::color(p.text_muted)).child(config_location_hint()))
     }
 
     fn render_keys_tab(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
@@ -184,7 +178,6 @@ impl RevealApp {
                 .child(
                     div()
                         .pb_2()
-                        .text_size(px(11.))
                         .text_color(ui::color(if capturing.is_some() {
                             p.text_accent
                         } else {
@@ -240,7 +233,6 @@ impl RevealApp {
                                 .h(px(20.))
                                 .flex()
                                 .items_center()
-                                .text_size(px(11.))
                                 .text_color(ui::color(p.text_muted))
                                 .child("Unassigned")
                                 .into_any_element(),
@@ -263,7 +255,7 @@ impl RevealApp {
                         .flex()
                         .items_center()
                         .gap_2()
-                        .child(div().flex_grow().text_size(px(11.)).child(action_label(action)))
+                        .child(div().flex_grow().child(action_label(action)))
                         .child(div().flex().items_center().gap_1().flex_wrap().children(chips))
                 })),
         )
@@ -311,7 +303,7 @@ impl RevealApp {
 }
 
 fn section_label(p: Palette, text: &'static str) -> gpui::Div {
-    div().text_size(px(11.)).text_color(ui::color(p.text_muted)).child(text)
+    div().text_color(ui::color(p.text_muted)).child(text)
 }
 
 fn toggle_row(
@@ -333,13 +325,8 @@ fn toggle_row(
                 .flex_grow()
                 .flex()
                 .flex_col()
-                .child(div().text_size(px(11.)).child(field.label()))
-                .child(
-                    div()
-                        .text_size(px(11.))
-                        .text_color(ui::color(p.text_muted))
-                        .child(field.description()),
-                ),
+                .child(div().child(field.label()))
+                .child(div().text_color(ui::color(p.text_muted)).child(field.description())),
         )
         .child(if enabled {
             ui::chip(("toggle", field as usize), p, value)
