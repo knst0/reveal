@@ -4,6 +4,17 @@ use super::{CacheStore, CachedImage, DEFAULT_CAPACITY_BYTES, Loader, RequestId};
 use crate::decode::DecodeError;
 use crate::directory::Directory;
 
+pub const PREFETCH_RADIUS: isize = 3;
+
+pub fn prefetch_offsets(radius: isize) -> Vec<isize> {
+    let mut offsets = Vec::new();
+    for step in 1..=radius.max(0) {
+        offsets.push(step);
+        offsets.push(-step);
+    }
+    offsets
+}
+
 pub struct ImageCache {
     store: CacheStore,
     loader: Loader,
@@ -13,8 +24,12 @@ pub struct ImageCache {
 
 impl Default for ImageCache {
     fn default() -> Self {
-        Self::new(DEFAULT_CAPACITY_BYTES, 2)
+        Self::new(DEFAULT_CAPACITY_BYTES, default_threads())
     }
+}
+
+pub fn default_threads() -> usize {
+    std::thread::available_parallelism().map_or(2, |n| n.get().saturating_sub(1).clamp(2, 6))
 }
 
 impl ImageCache {
@@ -48,7 +63,11 @@ impl ImageCache {
     }
 
     pub fn prefetch_neighbours(&mut self, dir: &Directory) {
-        for offset in [1isize, -1] {
+        self.prefetch_around(dir, PREFETCH_RADIUS);
+    }
+
+    pub fn prefetch_around(&mut self, dir: &Directory, radius: isize) {
+        for offset in prefetch_offsets(radius) {
             let Some(index) = dir.offset_index(offset) else {
                 continue;
             };
@@ -83,6 +102,25 @@ impl ImageCache {
             }
         }
         events
+    }
+
+    pub fn drain_one(
+        &mut self,
+        current_index: usize,
+    ) -> Option<(PathBuf, Result<(), DecodeError>)> {
+        if self.inflight.is_empty() {
+            return None;
+        }
+        let result = self.loader.recv()?;
+        self.inflight.retain(|(_, id)| *id != result.id);
+        match result.outcome {
+            Ok(image) => {
+                let path = image.path.clone();
+                self.store.insert(image, result.index, current_index);
+                Some((path, Ok(())))
+            }
+            Err(e) => Some((result.path, Err(e))),
+        }
     }
 
     pub fn block_on(&mut self, path: &Path, index: usize) -> Result<&CachedImage, DecodeError> {

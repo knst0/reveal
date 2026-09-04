@@ -10,8 +10,8 @@ use crate::decode::{Decoded, DecodedImage};
 use crate::directory::{Directory, Navigation};
 use crate::playback::{Playback, PlaybackState};
 use crate::render::{
-    FitMode, Resample, ViewTransform, apply_orientation, downscale_to_display_with,
-    fit_factor_to_budget, magnify_factor, magnify_nearest_crop, to_render_image,
+    FitMode, Resample, ViewTransform, downscaled, fit_factor_to_budget, into_render_image_still,
+    magnify_factor, magnify_nearest_crop, oriented, to_render_image, to_render_image_still,
 };
 
 pub struct Viewer {
@@ -26,13 +26,14 @@ pub struct Viewer {
     status: Option<String>,
     prepared: std::collections::HashMap<PathBuf, Prepared>,
     paused_paths: std::collections::HashSet<PathBuf>,
+    pending: Option<PathBuf>,
 }
 
 struct Prepared {
     path: PathBuf,
     render: Arc<RenderImage>,
     intrinsic: (f32, f32),
-    decoded: Arc<Decoded>,
+    output: Arc<crate::decode::DecodeOutput>,
     resample: Resample,
     base: Option<DecodedImage>,
     magnified: Option<Magnified>,
@@ -64,6 +65,7 @@ impl Viewer {
             status: None,
             prepared: std::collections::HashMap::new(),
             paused_paths: std::collections::HashSet::new(),
+            pending: None,
         }
     }
 
@@ -125,7 +127,7 @@ impl Viewer {
             current.magnified = None;
             return;
         }
-        let render = to_render_image(&Decoded::Still(enlarged));
+        let render = into_render_image_still(enlarged);
         current.magnified = Some(Magnified { factor, crop, render });
     }
 
@@ -136,7 +138,10 @@ impl Viewer {
 
     pub fn open(&mut self, path: &Path) -> std::io::Result<()> {
         match self.cache.block_on(path, 0) {
-            Ok(_) => self.present(path),
+            Ok(_) => {
+                self.pending = None;
+                self.present(path);
+            }
             Err(e) => self.status = Some(format!("{}: {e}", path.display())),
         }
         self.directory = Directory::open_at(path)?;
@@ -159,13 +164,7 @@ impl Viewer {
         let Some(entry) = self.cache.get(path) else {
             return;
         };
-        let prepared = Self::prepare(
-            path,
-            &entry.output.decoded,
-            entry.output.orientation,
-            self.viewport,
-            self.resample,
-        );
+        let prepared = Self::prepare(path, entry.output.clone(), self.viewport, self.resample);
         self.playback.reset();
         self.transform.apply_fit(prepared.intrinsic, self.viewport);
         self.status = None;
@@ -187,7 +186,7 @@ impl Viewer {
 
     pub fn is_animated(&self) -> bool {
         matches!(
-            self.current.as_ref().map(|c| c.decoded.as_ref()),
+            self.current.as_ref().map(|c| &c.output.decoded),
             Some(Decoded::Animation(frames)) if frames.len() > 1
         )
     }
@@ -206,23 +205,26 @@ impl Viewer {
 
     fn prepare(
         path: &Path,
-        decoded: &Decoded,
-        orientation: crate::decode::Orientation,
+        output: Arc<crate::decode::DecodeOutput>,
         viewport: (f32, f32),
         resample: Resample,
     ) -> Prepared {
+        let orientation = output.orientation;
+        let decoded = &output.decoded;
         let first = match decoded {
-            Decoded::Still(img) => Some(apply_orientation(img, orientation)),
-            Decoded::Animation(frames) => {
-                frames.first().map(|f| apply_orientation(&f.image, orientation))
-            }
+            Decoded::Still(img) => Some(oriented(img, orientation)),
+            Decoded::Animation(frames) => frames.first().map(|f| oriented(&f.image, orientation)),
         };
 
         let (render, intrinsic, base) = match (decoded, first) {
             (Decoded::Still(_), Some(img)) => {
-                let scaled = downscale_to_display_with(&img, viewport, resample);
+                let scaled = match downscaled(&img, viewport, resample) {
+                    std::borrow::Cow::Owned(s) => s,
+                    std::borrow::Cow::Borrowed(_) => img.into_owned(),
+                };
                 let intrinsic = (scaled.width as f32, scaled.height as f32);
-                (to_render_image(&Decoded::Still(scaled.clone())), intrinsic, Some(scaled))
+                let render = to_render_image_still(&scaled);
+                (render, intrinsic, Some(scaled))
             }
             (_, Some(img)) => {
                 (to_render_image(decoded), (img.width as f32, img.height as f32), None)
@@ -234,7 +236,7 @@ impl Viewer {
             path: path.to_path_buf(),
             render,
             intrinsic,
-            decoded: Arc::new(decoded.clone()),
+            output: output.clone(),
             resample,
             base,
             magnified: None,
@@ -255,13 +257,7 @@ impl Viewer {
             let Some(entry) = self.cache.get(&path) else {
                 continue;
             };
-            let prepared = Self::prepare(
-                &path,
-                &entry.output.decoded,
-                entry.output.orientation,
-                self.viewport,
-                self.resample,
-            );
+            let prepared = Self::prepare(&path, entry.output.clone(), self.viewport, self.resample);
             self.prepared.insert(path, prepared);
         }
         let keep: Vec<PathBuf> = [1isize, -1, 0]
@@ -293,14 +289,51 @@ impl Viewer {
 
     fn show(&mut self, path: &Path) {
         let index = self.directory.current_index();
-        match self.cache.block_on(path, index) {
-            Ok(_) => self.present(path),
-            Err(e) => {
-                self.current = None;
-                self.status = Some(format!("{}: {e}", path.display()));
-            }
+        if self.prepared.contains_key(path) || self.cache.get(path).is_some() {
+            self.pending = None;
+            self.present(path);
+        } else {
+            self.pending = Some(path.to_path_buf());
+            self.cache.request(path, index);
         }
         self.cache.prefetch_neighbours(&self.directory);
+    }
+
+    pub fn settle(&mut self) {
+        while self.pending.is_some() {
+            let index = self.directory.current_index();
+            let Some((path, outcome)) = self.cache.drain_one(index) else {
+                break;
+            };
+            self.absorb(&path, outcome);
+            self.resolve_pending();
+        }
+    }
+
+    fn absorb(&mut self, path: &Path, outcome: Result<(), crate::decode::DecodeError>) {
+        if let Err(e) = outcome
+            && self.pending.as_deref() == Some(path)
+        {
+            self.pending = None;
+            self.current = None;
+            self.status = Some(format!("{}: {e}", path.display()));
+        }
+    }
+
+    fn resolve_pending(&mut self) -> bool {
+        let Some(pending) = self.pending.clone() else {
+            return false;
+        };
+        if self.directory.current().is_none_or(|c| c != pending) {
+            self.pending = None;
+            return false;
+        }
+        if self.prepared.contains_key(&pending) || self.cache.get(&pending).is_some() {
+            self.pending = None;
+            self.present(&pending);
+            return true;
+        }
+        false
     }
 
     pub fn antialias(&self) -> bool {
@@ -343,13 +376,17 @@ impl Viewer {
 
     pub fn tick(&mut self, now: Instant) -> bool {
         let mut redraw = false;
-        if !self.cache.pump(self.directory.current_index()).is_empty() {
+        for (path, outcome) in self.cache.pump(self.directory.current_index()) {
+            redraw = true;
+            self.absorb(&path, outcome);
+        }
+        if self.resolve_pending() {
             redraw = true;
         }
         self.prepare_neighbours();
         if let Some(current) = &self.current {
-            let decoded = current.decoded.clone();
-            if self.playback.advance(&decoded, now) {
+            let output = current.output.clone();
+            if self.playback.advance(&output.decoded, now) {
                 redraw = true;
             }
         }
@@ -369,8 +406,8 @@ impl Viewer {
 }
 
 impl Viewer {
-    pub fn current_decoded(&self) -> Option<Arc<Decoded>> {
-        self.current.as_ref().map(|c| c.decoded.clone())
+    pub fn current_output(&self) -> Option<Arc<crate::decode::DecodeOutput>> {
+        self.current.as_ref().map(|c| c.output.clone())
     }
 
     pub fn delete_current(&mut self) {

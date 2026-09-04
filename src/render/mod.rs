@@ -21,6 +21,23 @@ pub fn to_bgra(image: &DecodedImage) -> RgbaImage {
         .expect("decoded buffer must match its dimensions")
 }
 
+pub fn to_render_image_still(image: &DecodedImage) -> Arc<RenderImage> {
+    Arc::new(RenderImage::new(vec![Frame::new(to_bgra(image))]))
+}
+
+pub fn into_render_image_still(image: DecodedImage) -> Arc<RenderImage> {
+    Arc::new(RenderImage::new(vec![Frame::new(into_bgra(image))]))
+}
+
+fn into_bgra(image: DecodedImage) -> RgbaImage {
+    let mut buffer = image.rgba;
+    for px in buffer.chunks_exact_mut(4) {
+        px.swap(0, 2);
+    }
+    RgbaImage::from_raw(image.width, image.height, buffer)
+        .expect("decoded buffer must match its dimensions")
+}
+
 pub fn to_render_image(decoded: &Decoded) -> Arc<RenderImage> {
     let frames: Vec<Frame> = match decoded {
         Decoded::Still(image) => vec![Frame::new(to_bgra(image))],
@@ -64,6 +81,18 @@ pub fn needs_downscale(image: (u32, u32), display: (f32, f32)) -> bool {
 
 pub fn downscale_to_display(image: &DecodedImage, display: (f32, f32)) -> DecodedImage {
     downscale_to_display_with(image, display, Resample::Filtered)
+}
+
+pub fn downscaled<'a>(
+    image: &'a DecodedImage,
+    display: (f32, f32),
+    resample: Resample,
+) -> std::borrow::Cow<'a, DecodedImage> {
+    if needs_downscale((image.width, image.height), display) {
+        std::borrow::Cow::Owned(downscale_to_display_with(image, display, resample))
+    } else {
+        std::borrow::Cow::Borrowed(image)
+    }
 }
 
 pub fn downscale_to_display_with(
@@ -170,6 +199,17 @@ pub fn magnify_nearest_crop(
     }
 
     DecodedImage { width: out_w as u32, height: out_h as u32, rgba: out }
+}
+
+pub fn oriented(
+    image: &DecodedImage,
+    orientation: Orientation,
+) -> std::borrow::Cow<'_, DecodedImage> {
+    if orientation == Orientation::Normal {
+        std::borrow::Cow::Borrowed(image)
+    } else {
+        std::borrow::Cow::Owned(apply_orientation(image, orientation))
+    }
 }
 
 pub fn apply_orientation(image: &DecodedImage, orientation: Orientation) -> DecodedImage {

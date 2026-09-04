@@ -68,3 +68,11 @@ opt-level = 2
 [[bench]]
 name = "resize"
 harness = false
+
+[[bench]]
+name = "navigate"
+harness = false
+
+[[bench]]
+name = "decode"
+harness = false

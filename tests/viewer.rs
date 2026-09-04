@@ -39,9 +39,11 @@ fn navigates_forward_and_wraps() {
     v.open(&dir.join("2.png")).unwrap();
 
     v.navigate(Navigation::Next);
+    v.settle();
     assert_eq!(v.current_path().unwrap(), dir.join("0.png"));
 
     v.navigate(Navigation::Prev);
+    v.settle();
     assert_eq!(v.current_path().unwrap(), dir.join("2.png"));
     fs::remove_dir_all(&dir).unwrap();
 }
@@ -105,5 +107,28 @@ fn panning_switches_to_free_mode() {
     v.pan((25.0, -10.0));
     assert_eq!(v.transform.fit, FitMode::Free);
     assert_eq!(v.transform.offset, (25.0, -10.0));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn navigation_does_not_block_on_decode() {
+    let dir = fixture("nonblock", 6);
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&dir.join("0.png")).unwrap();
+
+    let start = std::time::Instant::now();
+    for _ in 0..5 {
+        v.navigate(Navigation::Next);
+    }
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(50),
+        "navigation should return without waiting for decode, took {elapsed:?}"
+    );
+
+    v.settle();
+    assert_eq!(v.current_path().unwrap(), dir.join("5.png"));
     fs::remove_dir_all(&dir).unwrap();
 }

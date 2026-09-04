@@ -73,8 +73,8 @@ impl RevealApp {
     }
 
     pub fn copy_current(&mut self) {
-        if let Some(decoded) = self.viewer.current_decoded()
-            && let Err(e) = reveal::actions::copy_to_clipboard(&decoded)
+        if let Some(output) = self.viewer.current_output()
+            && let Err(e) = reveal::actions::copy_to_clipboard(&output.decoded)
         {
             log::error!("copy failed: {e}");
         }
