@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=reveal
+Name=Reveal
 Exec=reveal %f
 Icon=reveal
 Terminal=false
