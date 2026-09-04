@@ -33,6 +33,10 @@ body_of() {
   ' "$1" | sed -e '/./,$!d' | awk '{ lines[NR] = $0 } END { last = 0; for (i = 1; i <= NR; i++) if (lines[i] ~ /[^[:space:]]/) last = i; for (i = 1; i <= last; i++) print lines[i] }'
 }
 
+commit_of() {
+  git log --format=%h --diff-filter=A -1 -- "$1" 2>/dev/null | head -n1
+}
+
 rank() {
   case "$1" in
     major) echo 3 ;;
@@ -59,8 +63,10 @@ collect() {
     body="$(body_of "$file")"
     [ -n "$body" ] || die "$file: empty changelog body"
 
-    entry="$(printf '%s' "$body" | awk '
-      NR == 1 { print "- " $0; next }
+    hash="$(commit_of "$file")"
+
+    entry="$(printf '%s' "$body" | awk -v h="$hash" '
+      NR == 1 { print "- " (h == "" ? "" : h " ") $0; next }
       /^[[:space:]]*$/ { print ""; next }
       { print "  " $0 }
     ')"
