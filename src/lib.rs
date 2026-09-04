@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod associations;
 pub mod cache;
 pub mod config;
 pub mod decode;
