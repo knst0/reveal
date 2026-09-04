@@ -6,22 +6,20 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
-      - 'scripts/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'build.rs'
       - 'rust-toolchain.toml'
-      - '.github/workflows/**'
+      - '.github/workflows/ci.yml'
   pull_request:
     paths:
       - 'src/**'
       - 'tests/**'
-      - 'scripts/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'build.rs'
       - 'rust-toolchain.toml'
-      - '.github/workflows/**'
+      - '.github/workflows/ci.yml'
 
 env:
   CARGO_TERM_COLOR: always
