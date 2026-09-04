@@ -1,5 +1,12 @@
 # reveal
 
+## 0.2.1
+
+### Patch Changes
+
+- 8fdde9b: Fix update checks and automatic installation, which silently did nothing.
+- b88e580: Show the application name as "Reveal" instead of "reveal" on Windows.
+
 ## 0.2.0
 
 ### Minor Changes
