@@ -9,8 +9,8 @@ mod update_toast;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    App, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
-    Render, Styled, Timer, Window, div,
+    App, Context, ExternalPaths, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement, Render, Styled, Timer, Window, div,
 };
 use reveal::actions::Theme;
 use reveal::config::{Cache, Configuration, Updates};
@@ -40,6 +40,7 @@ pub struct RevealApp {
     pub update_settings: Updates,
     pub update_notice: Option<UpdateNotice>,
     pub update_busy: bool,
+    pub drop_hover: bool,
 }
 
 pub struct AppInit {
@@ -71,12 +72,25 @@ impl RevealApp {
             update_settings,
             update_notice: None,
             update_busy: false,
+            drop_hover: false,
             theme,
             viewer,
         };
         app.start_ticker(cx);
         app.start_update_check(cx);
         app
+    }
+
+    pub fn open_dropped(&mut self, paths: &[std::path::PathBuf]) {
+        self.drop_hover = false;
+        let Some(target) = reveal::drop::resolve(paths) else {
+            return;
+        };
+        if let Err(e) = self.viewer.open(&target) {
+            log::warn!("failed to open dropped {}: {e}", target.display());
+        }
+        self.context_menu = None;
+        self.zoom_menu_open = false;
     }
 
     pub fn open_settings(&mut self) {
@@ -159,6 +173,9 @@ impl RevealApp {
 impl Render for RevealApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let size = window.viewport_size();
+        if self.drop_hover && !cx.has_active_drag() {
+            self.drop_hover = false;
+        }
         self.viewer.set_viewport(f32::from(size.width), f32::from(size.height));
         self.viewer.scale_factor = window.scale_factor();
 
@@ -177,6 +194,29 @@ impl Render for RevealApp {
             .bg(ui::color(p.background))
             .text_color(ui::color(p.text))
             .track_focus(&self.focus)
+            .can_drop(|dragged, _window, _cx| {
+                dragged
+                    .downcast_ref::<ExternalPaths>()
+                    .is_some_and(|p| p.paths().iter().any(|path| reveal::drop::is_droppable(path)))
+            })
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, _window, cx| {
+                this.open_dropped(paths.paths());
+                cx.notify();
+            }))
+            .on_drag_move(cx.listener(
+                |this, event: &gpui::DragMoveEvent<ExternalPaths>, _window, cx| {
+                    let hovering = event.bounds.contains(&event.event.position)
+                        && event
+                            .drag(cx)
+                            .paths()
+                            .iter()
+                            .any(|path| reveal::drop::is_droppable(path));
+                    if this.drop_hover != hovering {
+                        this.drop_hover = hovering;
+                        cx.notify();
+                    }
+                },
+            ))
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
             .on_mouse_down(
                 MouseButton::Left,
@@ -233,6 +273,7 @@ impl Render for RevealApp {
             .children(
                 self.update_notice.clone().map(|notice| self.render_update_toast(notice, p, cx)),
             )
+            .children(self.drop_hover.then(|| self.render_drop_overlay(p)))
     }
 }
 
@@ -265,6 +306,38 @@ impl RevealApp {
                     }
                 }),
             )
+    }
+}
+
+impl RevealApp {
+    fn render_drop_overlay(&self, p: ui::Palette) -> impl IntoElement {
+        let mut backdrop = ui::color(p.background);
+        backdrop.a = 0.82;
+        div().absolute().inset_0().flex().items_center().justify_center().bg(backdrop).child(
+            div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap_2()
+                .px_8()
+                .py_6()
+                .rounded_lg()
+                .border_2()
+                .border_dashed()
+                .border_color(ui::color(p.text_accent))
+                .child(
+                    div()
+                        .text_size(gpui::px(16.))
+                        .text_color(ui::color(p.text))
+                        .child("Drop to open"),
+                )
+                .child(
+                    div()
+                        .text_size(gpui::px(12.))
+                        .text_color(ui::color(p.text_muted))
+                        .child("Image file or folder"),
+                ),
+        )
     }
 }
 

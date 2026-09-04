@@ -3,6 +3,7 @@ pub mod cache;
 pub mod config;
 pub mod decode;
 pub mod directory;
+pub mod drop;
 pub mod formats;
 pub mod input;
 pub mod panic_report;
