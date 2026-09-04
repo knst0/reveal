@@ -114,7 +114,8 @@ jobs:
         run: |
           set -euo pipefail
           scripts/bundle-macos.sh "target/${{ matrix.target }}/release/reveal" target/macos
-          tar -czf "reveal-${{ matrix.target }}.tar.gz" -C target/macos Reveal.app
+          tar -czf "Reveal-macos-app.tar.gz" -C target/macos Reveal.app
+          tar -czf "reveal-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" reveal
       - name: Package (windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -122,7 +123,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: reveal-${{ matrix.target }}
-          path: reveal-${{ matrix.target }}.*
+          path: |
+            reveal-${{ matrix.target }}.*
+            Reveal-macos-app.tar.gz
           if-no-files-found: error
 
   publish:
