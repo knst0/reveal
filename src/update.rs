@@ -4,6 +4,9 @@ use crate::config::{Cache, Channel, Updates};
 
 pub const REPO_OWNER: &str = "knst0";
 pub const REPO_NAME: &str = "reveal";
+#[cfg(windows)]
+pub const BIN_NAME: &str = "reveal.exe";
+#[cfg(not(windows))]
 pub const BIN_NAME: &str = "reveal";
 
 pub const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);

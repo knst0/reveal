@@ -18,7 +18,7 @@ pkg-fmt = "tgz"
 pkg-fmt = "zip"
 
 [features]
-default = []
+default = ["raw", "updates"]
 raw = ["dep:rawler"]
 updates = ["dep:self_update"]
 
