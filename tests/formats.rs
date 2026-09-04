@@ -48,3 +48,25 @@ fn extensions_are_lowercase_and_unique() {
         assert!(!e.starts_with('.'), "store bare extensions: {e}");
     }
 }
+
+#[test]
+fn the_macos_icon_is_a_valid_icns_container() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/resource/macos/reveal.icns");
+    let data = std::fs::read(path).expect("resource/macos/reveal.icns exists");
+
+    assert_eq!(&data[0..4], b"icns");
+    let declared = u32::from_be_bytes(data[4..8].try_into().unwrap()) as usize;
+    assert_eq!(declared, data.len(), "header length must match file size");
+
+    let mut offset = 8;
+    let mut chunks = 0;
+    while offset < data.len() {
+        let len = u32::from_be_bytes(data[offset + 4..offset + 8].try_into().unwrap()) as usize;
+        assert!(len >= 8 && offset + len <= data.len(), "chunk overruns the file");
+        assert_eq!(&data[offset + 8..offset + 12], b"\x89PNG", "chunk payload must be a PNG");
+        offset += len;
+        chunks += 1;
+    }
+    assert_eq!(offset, data.len(), "chunks must tile the file exactly");
+    assert!(chunks >= 6, "expected the full size ladder, got {chunks}");
+}
