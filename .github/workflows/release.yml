@@ -139,31 +139,31 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: changelog
-          path: changelog
+          path: ../release-staging/changelog
       - uses: actions/download-artifact@v8
         with:
           name: version-bump
       - uses: actions/download-artifact@v8
         with:
-          path: dist
+          path: ../release-staging/dist
           pattern: reveal-*
           merge-multiple: true
       - name: List artifacts
-        run: ls -la dist changelog
+        run: ls -la ../release-staging/dist ../release-staging/changelog
       - name: Dry run summary
         if: inputs.dry-run
         run: |
           echo "Dry run: would bump to ${{ needs.prepare.outputs.version }}, tag ${{ needs.prepare.outputs.tag }} at ${{ needs.prepare.outputs.sha }} and upload:"
-          ls dist
+          ls ../release-staging/dist
           echo '--- release notes ---'
-          cat changelog/RELEASE_NOTES.md
+          cat ../release-staging/changelog/RELEASE_NOTES.md
       - name: Commit changelog and push tag
         if: '!inputs.dry-run'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cp changelog/CHANGELOG.md CHANGELOG.md
+          cp ../release-staging/changelog/CHANGELOG.md CHANGELOG.md
           { git ls-files -z '.changeset/*.md' \
             | { grep -zv '^.changeset/README.md$' || true; } \
             | xargs -0 -r git rm -q --; }
@@ -182,9 +182,9 @@ jobs:
           set -euo pipefail
           gh release create "${{ needs.prepare.outputs.tag }}" \
             --title "${{ needs.prepare.outputs.tag }}" \
-            --notes-file changelog/RELEASE_NOTES.md \
+            --notes-file ../release-staging/changelog/RELEASE_NOTES.md \
             ${{ inputs.draft && '--draft' || '' }} \
-            dist/*
+            ../release-staging/dist/*
       - uses: dtolnay/rust-toolchain@stable
         if: '!inputs.dry-run'
       - name: Publish to crates.io
@@ -193,7 +193,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           for attempt in 1 2 3 4 5; do
-            if out=$(cargo publish --locked --allow-dirty --no-verify 2>&1); then
+            if out=$(cargo publish --locked --no-verify 2>&1); then
               echo "$out"
               exit 0
             fi
@@ -202,8 +202,9 @@ jobs:
               echo "Version already on crates.io; treating as success."
               exit 0
             fi
-            echo "Publish attempt $attempt failed; retrying in 30s."
-            sleep 30
+            delay=$((15 * 2 ** (attempt - 1)))
+            echo "Publish attempt $attempt failed; retrying in ${delay}s."
+            sleep "$delay"
           done
           echo "cargo publish failed after 5 attempts."
           exit 1

@@ -8,6 +8,16 @@ repository = "https://github.com/knst0/reveal"
 readme = "README.md"
 keywords = ["image", "viewer", "gpui", "graphics"]
 categories = ["multimedia::images", "command-line-utilities"]
+exclude = [
+    "dist/*",
+    "changelog/*",
+    "release-staging/*",
+    ".github/*",
+    ".changeset/*",
+    "scripts/*",
+    "*.tar.gz",
+    "*.zip",
+]
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }{ archive-suffix }"
