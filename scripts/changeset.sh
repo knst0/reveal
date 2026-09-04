@@ -66,7 +66,7 @@ collect() {
     hash="$(commit_of "$file")"
 
     entry="$(printf '%s' "$body" | awk -v h="$hash" '
-      NR == 1 { print "- " (h == "" ? "" : h " ") $0; next }
+      NR == 1 { print "- " (h == "" ? "" : h ": ") $0; next }
       /^[[:space:]]*$/ { print ""; next }
       { print "  " $0 }
     ')"
