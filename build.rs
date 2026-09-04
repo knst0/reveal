@@ -8,6 +8,9 @@ fn main() {
             res.set_icon("resource/reveal.ico");
         }
         res.set("ProductName", "Reveal");
+        res.set("FileDescription", "Reveal");
+        res.set("InternalName", "Reveal");
+        res.set("OriginalFilename", "reveal.exe");
         if let Err(e) = res.compile() {
             println!("cargo:warning=winres failed: {e}");
         }
