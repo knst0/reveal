@@ -25,13 +25,13 @@ fn accepts_images_and_folders_but_not_other_files() {
 fn resolves_a_dropped_image_to_itself() {
     let dir = fixture("file");
     let target = dir.join("10.png");
-    assert_eq!(reveal::drop::resolve(&[target.clone()]), Some(target));
+    assert_eq!(reveal::drop::resolve(std::slice::from_ref(&target)), Some(target));
 }
 
 #[test]
 fn resolves_a_dropped_folder_to_its_first_image_in_natural_order() {
     let dir = fixture("folder");
-    assert_eq!(reveal::drop::resolve(&[dir.clone()]), Some(dir.join("2.png")));
+    assert_eq!(reveal::drop::resolve(std::slice::from_ref(&dir)), Some(dir.join("2.png")));
 }
 
 #[test]
