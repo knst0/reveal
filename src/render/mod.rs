@@ -217,32 +217,162 @@ pub fn apply_orientation(image: &DecodedImage, orientation: Orientation) -> Deco
         return image.clone();
     }
     let (w, h) = (image.width as usize, image.height as usize);
-    let (out_w, out_h) = match orientation {
-        Orientation::Rotate90
-        | Orientation::Rotate270
-        | Orientation::Transpose
-        | Orientation::Transverse => (h, w),
-        _ => (w, h),
+    let (out_w, out_h) = {
+        let o = oriented_size((image.width, image.height), orientation);
+        (o.0 as usize, o.1 as usize)
     };
 
     let mut out = vec![0u8; w * h * 4];
-    for y in 0..h {
-        for x in 0..w {
-            let (nx, ny) = match orientation {
-                Orientation::FlipH => (w - 1 - x, y),
-                Orientation::Rotate180 => (w - 1 - x, h - 1 - y),
-                Orientation::FlipV => (x, h - 1 - y),
-                Orientation::Transpose => (y, x),
-                Orientation::Rotate90 => (h - 1 - y, x),
-                Orientation::Transverse => (h - 1 - y, w - 1 - x),
-                Orientation::Rotate270 => (y, w - 1 - x),
-                Orientation::Normal => (x, y),
-            };
-            let src = (y * w + x) * 4;
-            let dst = (ny * out_w + nx) * 4;
-            out[dst..dst + 4].copy_from_slice(&image.rgba[src..src + 4]);
+    let src = &image.rgba;
+    let stride = w * 4;
+    let dst_stride = out_w * 4;
+
+    match orientation {
+        Orientation::FlipV => {
+            for y in 0..h {
+                let s = y * stride;
+                let d = (h - 1 - y) * stride;
+                out[d..d + stride].copy_from_slice(&src[s..s + stride]);
+            }
+        }
+        Orientation::FlipH => {
+            for y in 0..h {
+                let row = &src[y * stride..y * stride + stride];
+                let drow = &mut out[y * stride..y * stride + stride];
+                for x in 0..w {
+                    let d = (w - 1 - x) * 4;
+                    drow[d..d + 4].copy_from_slice(&row[x * 4..x * 4 + 4]);
+                }
+            }
+        }
+        Orientation::Rotate180 => {
+            for y in 0..h {
+                let row = &src[y * stride..y * stride + stride];
+                let dy = h - 1 - y;
+                let drow = &mut out[dy * stride..dy * stride + stride];
+                for x in 0..w {
+                    let d = (w - 1 - x) * 4;
+                    drow[d..d + 4].copy_from_slice(&row[x * 4..x * 4 + 4]);
+                }
+            }
+        }
+        _ => {
+            for y in 0..h {
+                let row = &src[y * stride..y * stride + stride];
+                for x in 0..w {
+                    let (nx, ny) = match orientation {
+                        Orientation::Transpose => (y, x),
+                        Orientation::Rotate90 => (h - 1 - y, x),
+                        Orientation::Transverse => (h - 1 - y, w - 1 - x),
+                        Orientation::Rotate270 => (y, w - 1 - x),
+                        _ => (x, y),
+                    };
+                    let d = ny * dst_stride + nx * 4;
+                    out[d..d + 4].copy_from_slice(&row[x * 4..x * 4 + 4]);
+                }
+            }
         }
     }
 
+    let _ = out_h;
     DecodedImage { rgba: out, width: out_w as u32, height: out_h as u32 }
+}
+
+pub fn downscaled_size(size: (u32, u32), display: (f32, f32)) -> (u32, u32) {
+    if !needs_downscale(size, display) {
+        return size;
+    }
+    let scale = (display.0 / size.0 as f32).max(display.1 / size.1 as f32);
+    (
+        ((size.0 as f32 * scale).round() as u32).max(1),
+        ((size.1 as f32 * scale).round() as u32).max(1),
+    )
+}
+
+pub fn oriented_size(size: (u32, u32), orientation: Orientation) -> (u32, u32) {
+    match orientation {
+        Orientation::Rotate90
+        | Orientation::Rotate270
+        | Orientation::Transpose
+        | Orientation::Transverse => (size.1, size.0),
+        _ => size,
+    }
+}
+
+fn unoriented_target(physical: (f32, f32), orientation: Orientation) -> (f32, f32) {
+    match orientation {
+        Orientation::Rotate90
+        | Orientation::Rotate270
+        | Orientation::Transpose
+        | Orientation::Transverse => (physical.1, physical.0),
+        _ => physical,
+    }
+}
+
+#[derive(Clone)]
+pub struct Display {
+    pub render: Arc<RenderImage>,
+    pub rgba: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    pub source: (u32, u32),
+    pub resample: Resample,
+}
+
+impl std::fmt::Debug for Display {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Display")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("source", &self.source)
+            .field("resample", &self.resample)
+            .finish()
+    }
+}
+
+impl Display {
+    pub fn fits(
+        &self,
+        image: &DecodedImage,
+        orientation: Orientation,
+        physical: (f32, f32),
+    ) -> bool {
+        let target = unoriented_target(physical, orientation);
+        let expected = downscaled_size((image.width, image.height), target);
+        oriented_size(expected, orientation) == (self.width, self.height)
+    }
+
+    pub fn base(&self) -> DecodedImage {
+        DecodedImage { rgba: self.rgba.clone(), width: self.width, height: self.height }
+    }
+}
+
+pub fn prepare_display(
+    image: &DecodedImage,
+    orientation: Orientation,
+    physical: (f32, f32),
+    resample: Resample,
+) -> Display {
+    let source = oriented_size((image.width, image.height), orientation);
+    let target = unoriented_target(physical, orientation);
+    let scaled = downscaled(image, target, resample);
+    let placed = match oriented(&scaled, orientation) {
+        std::borrow::Cow::Owned(o) => o,
+        std::borrow::Cow::Borrowed(_) => scaled.into_owned(),
+    };
+    let mut bgra = placed.rgba.clone();
+    for px in bgra.chunks_exact_mut(4) {
+        px.swap(0, 2);
+    }
+    let buffer = RgbaImage::from_raw(placed.width, placed.height, bgra)
+        .expect("display buffer must match its dimensions");
+    let render = Arc::new(RenderImage::new(vec![Frame::new(buffer)]));
+    Display {
+        render,
+        width: placed.width,
+        height: placed.height,
+        rgba: placed.rgba,
+        source,
+        resample,
+    }
 }

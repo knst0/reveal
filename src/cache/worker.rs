@@ -76,7 +76,13 @@ impl Loader {
         dropped
     }
 
-    pub fn request(&self, path: PathBuf, index: usize, target: (u32, u32)) -> RequestId {
+    pub fn request(
+        &self,
+        path: PathBuf,
+        index: usize,
+        target: (u32, u32),
+        resample: crate::render::Resample,
+    ) -> RequestId {
         let id = RequestId(self.next_id.fetch_add(1, Ordering::Relaxed));
         let (lock, cvar) = &*self.shared;
         let mut queue = lock.lock().unwrap();
@@ -86,6 +92,7 @@ impl Loader {
             index,
             target_width: target.0,
             target_height: target.1,
+            resample,
         });
         cvar.notify_one();
         id
@@ -197,6 +204,7 @@ fn load(request: &LoadRequest) -> Result<super::CachedImage, DecodeError> {
                 path: &request.path,
                 bytes: &bytes,
                 target_width: request.target_width,
+                resample: request.resample,
                 target_height: request.target_height,
             })
         }))

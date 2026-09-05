@@ -36,6 +36,7 @@ pub struct LoadRequest {
     pub index: usize,
     pub target_width: u32,
     pub target_height: u32,
+    pub resample: crate::render::Resample,
 }
 
 pub fn measure(output: &DecodeOutput) -> usize {

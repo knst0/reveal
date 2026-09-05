@@ -3,7 +3,13 @@ use std::path::Path;
 use reveal::decode::{self, DecodeRequest, Decoded, Orientation};
 
 fn req<'a>(path: &'a Path, bytes: &'a [u8]) -> DecodeRequest<'a> {
-    DecodeRequest { path, bytes, target_width: 256, target_height: 256 }
+    DecodeRequest {
+        path,
+        bytes,
+        target_width: 256,
+        target_height: 256,
+        resample: reveal::render::Resample::Filtered,
+    }
 }
 
 fn png_bytes(w: u32, h: u32) -> Vec<u8> {

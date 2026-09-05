@@ -26,6 +26,7 @@ fn fake(path: &str, bytes: usize) -> CachedImage {
         output: Arc::new(DecodeOutput {
             decoded: Decoded::Still(DecodedImage { rgba: Vec::new(), width: 1, height: 1 }),
             orientation: Orientation::Normal,
+            display: None,
         }),
     }
 }
@@ -57,7 +58,7 @@ fn loader_decodes_off_the_calling_thread() {
     write_png(&path, 32);
 
     let loader = Loader::new(2);
-    loader.request(path.clone(), 0, (64, 64));
+    loader.request(path.clone(), 0, (64, 64), reveal::render::Resample::Filtered);
     let result = loader.recv().expect("a result");
 
     assert_eq!(result.path, path);
@@ -69,7 +70,12 @@ fn loader_decodes_off_the_calling_thread() {
 #[test]
 fn cancelled_requests_do_not_deliver_results() {
     let loader = Loader::new(1);
-    let id = loader.request(PathBuf::from("nonexistent-abc.png"), 0, (1, 1));
+    let id = loader.request(
+        PathBuf::from("nonexistent-abc.png"),
+        0,
+        (1, 1),
+        reveal::render::Resample::Filtered,
+    );
     loader.cancel(id);
 
     let deadline = Instant::now() + std::time::Duration::from_millis(300);
@@ -172,10 +178,10 @@ fn the_nearest_request_is_decoded_before_its_farther_neighbours() {
     loader.set_current_index(3);
     for (index, path) in paths.iter().enumerate() {
         if index != 3 {
-            loader.request(path.clone(), index, (16, 16));
+            loader.request(path.clone(), index, (16, 16), reveal::render::Resample::Filtered);
         }
     }
-    loader.request(paths[3].clone(), 3, (16, 16));
+    loader.request(paths[3].clone(), 3, (16, 16), reveal::render::Resample::Filtered);
 
     let first = loader.recv().expect("a result");
     assert_eq!(first.index, 3, "the current image must be decoded first");

@@ -28,6 +28,7 @@ fn bench_decode(c: &mut Criterion) {
                     bytes: black_box(&bytes),
                     target_width: 2560,
                     target_height: 1440,
+                    resample: reveal::render::Resample::Filtered,
                 })
                 .unwrap(),
             )

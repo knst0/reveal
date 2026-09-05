@@ -10,8 +10,8 @@ use crate::decode::{Decoded, DecodedImage};
 use crate::directory::{Directory, Navigation};
 use crate::playback::{Playback, PlaybackState};
 use crate::render::{
-    FitMode, Resample, ViewTransform, downscaled, fit_factor_to_budget, into_render_image_still,
-    magnify_factor, magnify_nearest_crop, oriented, to_render_image, to_render_image_still,
+    FitMode, Resample, ViewTransform, fit_factor_to_budget, into_render_image_still,
+    magnify_factor, magnify_nearest_crop, oriented_size, prepare_display, to_render_image,
 };
 
 pub struct Viewer {
@@ -260,32 +260,28 @@ impl Viewer {
     ) -> Prepared {
         let orientation = output.orientation;
         let decoded = &output.decoded;
-        let first = match decoded {
-            Decoded::Still(img) => Some(oriented(img, orientation)),
-            Decoded::Animation(frames) => frames.first().map(|f| oriented(&f.image, orientation)),
-        };
-
         let dpr = scale_factor.max(1.0);
         let physical = (viewport.0 * dpr, viewport.1 * dpr);
 
-        let (render, intrinsic, source, base) = match (decoded, first) {
-            (Decoded::Still(_), Some(img)) => {
-                let source = (img.width, img.height);
-                let scaled = match downscaled(&img, physical, resample) {
-                    std::borrow::Cow::Owned(s) => s,
-                    std::borrow::Cow::Borrowed(_) => img.into_owned(),
+        let (render, intrinsic, source, base) = match decoded {
+            Decoded::Still(img) => {
+                let display = match output.display.as_ref() {
+                    Some(d) if d.resample == resample && d.fits(img, orientation, physical) => {
+                        d.clone()
+                    }
+                    _ => Arc::new(prepare_display(img, orientation, physical, resample)),
                 };
-                let intrinsic = (scaled.width as f32 / dpr, scaled.height as f32 / dpr);
-                let render = to_render_image_still(&scaled);
-                (render, intrinsic, source, Some(scaled))
+                let intrinsic = (display.width as f32 / dpr, display.height as f32 / dpr);
+                let base = if resample == Resample::Nearest { Some(display.base()) } else { None };
+                (display.render.clone(), intrinsic, display.source, base)
             }
-            (_, Some(img)) => (
-                to_render_image(decoded),
-                (img.width as f32, img.height as f32),
-                (img.width, img.height),
-                None,
-            ),
-            (_, None) => (to_render_image(decoded), (0.0, 0.0), (0, 0), None),
+            Decoded::Animation(frames) => match frames.first() {
+                Some(f) => {
+                    let size = oriented_size((f.image.width, f.image.height), orientation);
+                    (to_render_image(decoded), (size.0 as f32, size.1 as f32), size, None)
+                }
+                None => (to_render_image(decoded), (0.0, 0.0), (0, 0), None),
+            },
         };
 
         Prepared {
@@ -411,6 +407,7 @@ impl Viewer {
             return;
         }
         self.resample = resample;
+        self.cache.set_resample(resample);
         self.prepared.clear();
         if let Some(current) = self.current.as_mut() {
             current.magnified = None;
@@ -430,6 +427,7 @@ impl Viewer {
         let output = Arc::new(crate::decode::DecodeOutput {
             decoded: Decoded::Still(image),
             orientation: crate::decode::Orientation::Normal,
+            display: None,
         });
         let path = PathBuf::from("(clipboard)");
         let prepared =

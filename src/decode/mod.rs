@@ -48,12 +48,34 @@ pub struct DecodeRequest<'a> {
     pub bytes: &'a [u8],
     pub target_width: u32,
     pub target_height: u32,
+    pub resample: crate::render::Resample,
+}
+
+fn build_display(
+    decoded: &Decoded,
+    orientation: Orientation,
+    req: &DecodeRequest<'_>,
+) -> Option<std::sync::Arc<crate::render::Display>> {
+    let Decoded::Still(image) = decoded else {
+        return None;
+    };
+    if req.target_width == 0 || req.target_height == 0 {
+        return None;
+    }
+    let physical = (req.target_width as f32, req.target_height as f32);
+    Some(std::sync::Arc::new(crate::render::prepare_display(
+        image,
+        orientation,
+        physical,
+        req.resample,
+    )))
 }
 
 #[derive(Debug, Clone)]
 pub struct DecodeOutput {
     pub decoded: Decoded,
     pub orientation: Orientation,
+    pub display: Option<std::sync::Arc<crate::render::Display>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -87,7 +109,9 @@ pub fn decode(req: &DecodeRequest<'_>) -> Result<DecodeOutput, DecodeError> {
     let list = decoders();
     let decoder = list.iter().find(|d| d.probe(req)).ok_or(DecodeError::NoDecoder)?;
     let decoded = decoder.decode(req)?;
-    Ok(DecodeOutput { decoded, orientation: exif_orientation(req.bytes) })
+    let orientation = exif_orientation(req.bytes);
+    let display = build_display(&decoded, orientation, req);
+    Ok(DecodeOutput { decoded, orientation, display })
 }
 
 pub fn extension_of(path: &Path) -> Option<String> {

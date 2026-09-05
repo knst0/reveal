@@ -20,6 +20,7 @@ pub struct ImageCache {
     loader: Loader,
     inflight: Vec<(PathBuf, RequestId)>,
     target: (u32, u32),
+    resample: crate::render::Resample,
 }
 
 impl Default for ImageCache {
@@ -39,11 +40,20 @@ impl ImageCache {
             loader: Loader::new(threads),
             inflight: Vec::new(),
             target: (0, 0),
+            resample: crate::render::Resample::Filtered,
         }
     }
 
     pub fn set_target_size(&mut self, width: u32, height: u32) {
         self.target = (width, height);
+    }
+
+    pub fn resample(&self) -> crate::render::Resample {
+        self.resample
+    }
+
+    pub fn set_resample(&mut self, resample: crate::render::Resample) {
+        self.resample = resample;
     }
 
     pub fn store(&self) -> &CacheStore {
@@ -58,7 +68,7 @@ impl ImageCache {
         if self.store.contains(path) || self.inflight.iter().any(|(p, _)| p == path) {
             return;
         }
-        let id = self.loader.request(path.to_path_buf(), index, self.target);
+        let id = self.loader.request(path.to_path_buf(), index, self.target, self.resample);
         self.inflight.push((path.to_path_buf(), id));
     }
 
