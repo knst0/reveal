@@ -27,6 +27,7 @@ pub struct Viewer {
     prepared: std::collections::HashMap<PathBuf, Prepared>,
     paused_paths: std::collections::HashSet<PathBuf>,
     pending: Option<PathBuf>,
+    scan: Option<crate::directory::PendingScan>,
 }
 
 struct Prepared {
@@ -67,6 +68,7 @@ impl Viewer {
             prepared: std::collections::HashMap::new(),
             paused_paths: std::collections::HashSet::new(),
             pending: None,
+            scan: None,
         }
     }
 
@@ -165,25 +167,76 @@ impl Viewer {
 
     pub fn open(&mut self, path: &Path) -> std::io::Result<()> {
         self.cache.cancel_all_inflight();
-        self.directory = Directory::open_at(path)?;
-        self.cache.sync_to_directory(&self.directory);
-        self.cache.set_current_index(self.directory.current_index());
-        let target = if path.is_dir() {
-            self.directory.current().map(Path::to_path_buf)
-        } else {
-            Some(path.to_path_buf())
+        self.prepared.clear();
+        self.pending = None;
+        self.status = None;
+        self.current = None;
+        let scan = crate::directory::PendingScan::spawn(path);
+        match scan.target() {
+            Some(target) => {
+                let target = target.to_path_buf();
+                self.directory = Directory::single(&target);
+                self.cache.sync_to_directory(&self.directory);
+                self.show(&target);
+            }
+            None => {
+                self.directory = Directory::empty();
+                self.cache.sync_to_directory(&self.directory);
+                self.cache.set_current_index(0);
+            }
+        }
+        self.scan = Some(scan);
+        Ok(())
+    }
+
+    pub fn wait_for_scan(&mut self) {
+        self.adopt_scan(true);
+    }
+
+    fn adopt_scan(&mut self, blocking: bool) -> bool {
+        let Some(scan) = self.scan.as_mut() else {
+            return false;
         };
-        if let Some(target) = target {
-            match self.cache.block_on(&target, self.directory.current_index()) {
-                Ok(_) => {
-                    self.pending = None;
-                    self.present(&target);
+        let result = if blocking { Some(scan.wait()) } else { scan.take() };
+        let Some(result) = result else {
+            return false;
+        };
+        self.scan = None;
+        let Ok(mut scanned) = result else {
+            return false;
+        };
+        let anchor = self
+            .current_path()
+            .or(self.pending.as_deref())
+            .or_else(|| self.directory.current())
+            .map(Path::to_path_buf);
+        if let Some(anchor) = anchor.as_deref() {
+            scanned.jump_to(anchor);
+        }
+        self.directory = scanned;
+        self.cache.sync_to_directory(&self.directory);
+        let index = self.directory.current_index();
+        self.cache.set_current_index(index);
+        let mut redraw = false;
+        match anchor {
+            Some(_) => {
+                if self.resolve_pending() {
+                    redraw = true;
                 }
-                Err(e) => self.status = Some(format!("{}: {e}", target.display())),
+            }
+            None => {
+                if let Some(first) = self.directory.current().map(Path::to_path_buf) {
+                    self.show(&first);
+                    redraw = true;
+                }
             }
         }
         self.cache.prefetch_neighbours(&self.directory);
-        Ok(())
+        redraw || self.current.is_some()
+    }
+
+    fn scan_pending(&self) -> bool {
+        self.scan.is_some()
     }
 
     fn present(&mut self, path: &Path) {
@@ -361,6 +414,7 @@ impl Viewer {
     }
 
     pub fn settle(&mut self) {
+        self.wait_for_scan();
         while self.pending.is_some() {
             let index = self.directory.current_index();
             let Some((path, outcome)) = self.cache.drain_one(index) else {
@@ -466,7 +520,7 @@ impl Viewer {
     }
 
     pub fn tick(&mut self, now: Instant) -> bool {
-        let mut redraw = false;
+        let mut redraw = self.adopt_scan(false);
         for (path, outcome) in self.cache.pump(self.directory.current_index()) {
             redraw = true;
             self.absorb(&path, outcome);
@@ -492,7 +546,7 @@ impl Viewer {
     }
 
     pub fn needs_ticking(&self) -> bool {
-        if self.pending.is_some() || self.cache.inflight_len() > 0 {
+        if self.scan_pending() || self.pending.is_some() || self.cache.inflight_len() > 0 {
             return true;
         }
         if matches!(self.playback.state, PlaybackState::Present | PlaybackState::PresentRandom) {

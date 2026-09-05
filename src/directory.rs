@@ -29,11 +29,28 @@ fn sort_entries(entries: &mut [PathBuf]) {
 fn read_entries(dir: &Path) -> io::Result<Vec<PathBuf>> {
     let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)?
         .filter_map(Result::ok)
+        .filter(|e| match e.file_type() {
+            Ok(t) => t.is_file() || (t.is_symlink() && e.path().is_file()),
+            Err(_) => false,
+        })
         .map(|e| e.path())
-        .filter(|p| p.is_file() && is_supported(p))
+        .filter(|p| is_supported(p))
         .collect();
     sort_entries(&mut entries);
     Ok(entries)
+}
+
+pub fn split_target(path: &Path) -> (PathBuf, Option<PathBuf>) {
+    if path.is_dir() {
+        (path.to_path_buf(), None)
+    } else {
+        let dir = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        (dir, Some(path.to_path_buf()))
+    }
 }
 
 fn modified_of(dir: &Path) -> Option<SystemTime> {
@@ -45,17 +62,18 @@ impl Directory {
         Self::default()
     }
 
+    pub fn single(path: &Path) -> Self {
+        let (dir, file) = split_target(path);
+        let entries: Vec<PathBuf> = file.into_iter().collect();
+        Self { last_modified: None, dir, entries, current: 0 }
+    }
+
+    pub fn is_provisional(&self) -> bool {
+        self.last_modified.is_none() && !self.entries.is_empty()
+    }
+
     pub fn open_at(path: &Path) -> io::Result<Self> {
-        let (dir, file) = if path.is_dir() {
-            (path.to_path_buf(), None)
-        } else {
-            let dir = path
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| PathBuf::from("."));
-            (dir, Some(path.to_path_buf()))
-        };
+        let (dir, file) = split_target(path);
 
         let entries = read_entries(&dir)?;
         let current = file.as_ref().and_then(|f| index_of(&entries, f)).unwrap_or(0);
@@ -145,12 +163,60 @@ impl Directory {
 }
 
 fn index_of(entries: &[PathBuf], path: &Path) -> Option<usize> {
-    let target = std::fs::canonicalize(path).ok();
-    entries.iter().position(|e| {
-        e == path
-            || match (&target, std::fs::canonicalize(e).ok()) {
-                (Some(t), Some(c)) => &c == t,
-                _ => false,
+    if let Some(index) = entries.iter().position(|e| e == path) {
+        return Some(index);
+    }
+    let name = path.file_name();
+    let mut target: Option<Option<PathBuf>> = None;
+    for (index, entry) in entries.iter().enumerate() {
+        if entry.file_name() != name {
+            continue;
+        }
+        let target = target.get_or_insert_with(|| std::fs::canonicalize(path).ok());
+        let (Some(t), Some(c)) = (target.as_ref(), std::fs::canonicalize(entry).ok()) else {
+            continue;
+        };
+        if &c == t {
+            return Some(index);
+        }
+    }
+    None
+}
+
+pub struct PendingScan {
+    target: Option<PathBuf>,
+    receiver: std::sync::mpsc::Receiver<io::Result<Directory>>,
+}
+
+impl PendingScan {
+    pub fn spawn(path: &Path) -> Self {
+        let (_, file) = split_target(path);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let request = path.to_path_buf();
+        std::thread::Builder::new()
+            .name("reveal-scan".into())
+            .spawn(move || {
+                let _ = sender.send(Directory::open_at(&request));
+            })
+            .ok();
+        Self { target: file, receiver }
+    }
+
+    pub fn target(&self) -> Option<&Path> {
+        self.target.as_deref()
+    }
+
+    pub fn take(&mut self) -> Option<io::Result<Directory>> {
+        match self.receiver.try_recv() {
+            Ok(result) => Some(result),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                Some(Err(io::Error::other("directory scan failed")))
             }
-    })
+        }
+    }
+
+    pub fn wait(&mut self) -> io::Result<Directory> {
+        self.receiver.recv().map_err(|_| io::Error::other("directory scan failed"))?
+    }
 }
