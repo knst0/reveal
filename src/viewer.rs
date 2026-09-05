@@ -33,6 +33,7 @@ struct Prepared {
     path: PathBuf,
     render: Arc<RenderImage>,
     intrinsic: (f32, f32),
+    source: (u32, u32),
     output: Arc<crate::decode::DecodeOutput>,
     resample: Resample,
     base: Option<DecodedImage>,
@@ -133,7 +134,33 @@ impl Viewer {
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
         self.viewport = (width, height);
-        self.cache.set_target_size(width.max(1.0) as u32, height.max(1.0) as u32);
+        self.sync_target_size();
+    }
+
+    fn sync_target_size(&mut self) {
+        let dpr = self.scale_factor.max(1.0);
+        self.cache.set_target_size(
+            (self.viewport.0 * dpr).max(1.0) as u32,
+            (self.viewport.1 * dpr).max(1.0) as u32,
+        );
+    }
+
+    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+        if (scale_factor - self.scale_factor).abs() < f32::EPSILON {
+            return;
+        }
+        self.scale_factor = scale_factor;
+        self.sync_target_size();
+        self.prepared.clear();
+        if let Some(path) = self.current_path().map(Path::to_path_buf) {
+            let keep = self.transform;
+            self.present(&path);
+            self.transform = keep;
+        }
+    }
+
+    pub fn current_source_size(&self) -> (u32, u32) {
+        self.current.as_ref().map_or((0, 0), |c| c.source)
     }
 
     pub fn open(&mut self, path: &Path) -> std::io::Result<()> {
@@ -164,21 +191,33 @@ impl Viewer {
             && ready.resample == self.resample
         {
             self.playback.reset();
-            self.transform.apply_fit(ready.intrinsic, self.viewport);
             self.status = None;
             self.current = Some(ready);
+            self.apply_current_fit();
             self.restore_playback(path);
             return;
         }
         let Some(entry) = self.cache.get(path) else {
             return;
         };
-        let prepared = Self::prepare(path, entry.output.clone(), self.viewport, self.resample);
+        let prepared = Self::prepare(
+            path,
+            entry.output.clone(),
+            self.viewport,
+            self.scale_factor,
+            self.resample,
+        );
         self.playback.reset();
-        self.transform.apply_fit(prepared.intrinsic, self.viewport);
         self.status = None;
         self.current = Some(prepared);
+        self.apply_current_fit();
         self.restore_playback(path);
+    }
+
+    fn apply_current_fit(&mut self) {
+        let intrinsic = self.current_intrinsic();
+        let original = self.original_zoom();
+        self.transform.apply_fit_with(intrinsic, self.viewport, original);
     }
 
     fn restore_playback(&mut self, path: &Path) {
@@ -216,6 +255,7 @@ impl Viewer {
         path: &Path,
         output: Arc<crate::decode::DecodeOutput>,
         viewport: (f32, f32),
+        scale_factor: f32,
         resample: Resample,
     ) -> Prepared {
         let orientation = output.orientation;
@@ -225,26 +265,34 @@ impl Viewer {
             Decoded::Animation(frames) => frames.first().map(|f| oriented(&f.image, orientation)),
         };
 
-        let (render, intrinsic, base) = match (decoded, first) {
+        let dpr = scale_factor.max(1.0);
+        let physical = (viewport.0 * dpr, viewport.1 * dpr);
+
+        let (render, intrinsic, source, base) = match (decoded, first) {
             (Decoded::Still(_), Some(img)) => {
-                let scaled = match downscaled(&img, viewport, resample) {
+                let source = (img.width, img.height);
+                let scaled = match downscaled(&img, physical, resample) {
                     std::borrow::Cow::Owned(s) => s,
                     std::borrow::Cow::Borrowed(_) => img.into_owned(),
                 };
-                let intrinsic = (scaled.width as f32, scaled.height as f32);
+                let intrinsic = (scaled.width as f32 / dpr, scaled.height as f32 / dpr);
                 let render = to_render_image_still(&scaled);
-                (render, intrinsic, Some(scaled))
+                (render, intrinsic, source, Some(scaled))
             }
-            (_, Some(img)) => {
-                (to_render_image(decoded), (img.width as f32, img.height as f32), None)
-            }
-            (_, None) => (to_render_image(decoded), (0.0, 0.0), None),
+            (_, Some(img)) => (
+                to_render_image(decoded),
+                (img.width as f32, img.height as f32),
+                (img.width, img.height),
+                None,
+            ),
+            (_, None) => (to_render_image(decoded), (0.0, 0.0), (0, 0), None),
         };
 
         Prepared {
             path: path.to_path_buf(),
             render,
             intrinsic,
+            source,
             output: output.clone(),
             resample,
             base,
@@ -266,7 +314,13 @@ impl Viewer {
             let Some(entry) = self.cache.get(&path) else {
                 continue;
             };
-            let prepared = Self::prepare(&path, entry.output.clone(), self.viewport, self.resample);
+            let prepared = Self::prepare(
+                &path,
+                entry.output.clone(),
+                self.viewport,
+                self.scale_factor,
+                self.resample,
+            );
             self.prepared.insert(path, prepared);
         }
         let keep: Vec<PathBuf> = [1isize, -1, 0]
@@ -372,9 +426,20 @@ impl Viewer {
         self.set_antialias(!self.antialias());
     }
 
+    pub fn original_zoom(&self) -> f32 {
+        let Some(current) = self.current.as_ref() else {
+            return 1.0;
+        };
+        if current.intrinsic.0 <= 0.0 || current.source.0 == 0 {
+            return 1.0;
+        }
+        current.source.0 as f32 / current.intrinsic.0
+    }
+
     pub fn set_fit(&mut self, fit: FitMode) {
         let intrinsic = self.current_intrinsic();
-        self.transform.set_fit(fit, intrinsic, self.viewport);
+        let original = self.original_zoom();
+        self.transform.set_fit_with(fit, intrinsic, self.viewport, original);
     }
 
     pub fn pan(&mut self, delta: (f32, f32)) {

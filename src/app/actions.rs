@@ -185,7 +185,7 @@ impl RevealApp {
     }
 
     pub fn dimensions_label(&self) -> Option<String> {
-        let (w, h) = self.viewer.current_intrinsic();
-        (w > 0.0 && h > 0.0).then(|| format!("{w:.0} \u{00d7} {h:.0}"))
+        let (w, h) = self.viewer.current_source_size();
+        (w > 0 && h > 0).then(|| format!("{w} \u{00d7} {h}"))
     }
 }

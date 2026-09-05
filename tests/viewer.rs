@@ -132,3 +132,45 @@ fn navigation_does_not_block_on_decode() {
     assert_eq!(v.current_path().unwrap(), dir.join("5.png"));
     fs::remove_dir_all(&dir).unwrap();
 }
+
+fn large_fixture(tag: &str, w: u32, h: u32) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("reveal-viewer-{tag}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let img = image::RgbaImage::from_pixel(w, h, image::Rgba([7, 7, 7, 255]));
+    image::DynamicImage::ImageRgba8(img).save(dir.join("big.png")).unwrap();
+    dir
+}
+
+#[test]
+fn the_reported_size_is_the_original_not_the_downscaled_copy() {
+    let dir = large_fixture("truesize", 1920, 1080);
+    let mut v = Viewer::new();
+    v.set_viewport(640.0, 400.0);
+    v.open(&dir.join("big.png")).unwrap();
+
+    assert_eq!(v.current_source_size(), (1920, 1080));
+    let (iw, ih) = v.current_intrinsic();
+    assert!(iw < 1920.0 && ih < 1080.0, "a downscaled copy should back the render");
+
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn original_shows_true_pixels_even_when_a_downscaled_copy_is_rendered() {
+    let dir = large_fixture("original", 1920, 1080);
+    let mut v = Viewer::new();
+    v.set_viewport(640.0, 400.0);
+    v.open(&dir.join("big.png")).unwrap();
+
+    v.set_fit(FitMode::Original);
+    let (iw, _) = v.current_intrinsic();
+    let displayed = iw * v.transform.zoom;
+    assert!(
+        (displayed - 1920.0).abs() < 2.0,
+        "Original should display {} source pixels, got {displayed}",
+        1920
+    );
+
+    fs::remove_dir_all(&dir).unwrap();
+}

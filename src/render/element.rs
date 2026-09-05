@@ -72,8 +72,7 @@ impl Element for ImageElement {
         _cx: &mut App,
     ) -> Self::PrepaintState {
         let viewport = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-        let mut transform = self.transform;
-        transform.apply_fit(self.intrinsic, viewport);
+        let transform = self.transform;
 
         let (x, y, w, h) = transform.image_bounds(self.intrinsic, viewport);
         let (x, y, w, h) = match self.crop {

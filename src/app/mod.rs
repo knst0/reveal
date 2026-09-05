@@ -178,8 +178,10 @@ impl Render for RevealApp {
         if self.drop_hover && !cx.has_active_drag() {
             self.drop_hover = false;
         }
-        self.viewer.set_viewport(f32::from(size.width), f32::from(size.height));
-        self.viewer.scale_factor = window.scale_factor();
+        let chrome =
+            ui::TOOLBAR_HEIGHT + if self.show_bottom_bar { ui::STATUS_BAR_HEIGHT } else { 0.0 };
+        self.viewer.set_viewport(f32::from(size.width), (f32::from(size.height) - chrome).max(1.0));
+        self.viewer.set_scale_factor(window.scale_factor());
 
         let title = self.compute_title();
         if title != self.window_title {
@@ -269,7 +271,7 @@ impl Render for RevealApp {
                 if delta == 0.0 {
                     return;
                 }
-                let cursor = (f32::from(event.position.x), f32::from(event.position.y));
+                let cursor = this.to_image_area(event.position);
                 this.viewer.zoom_at(1.1f32.powf(delta.clamp(-5.0, 5.0)), cursor);
                 cx.notify();
             }))
@@ -286,6 +288,10 @@ impl Render for RevealApp {
 }
 
 impl RevealApp {
+    fn to_image_area(&self, position: gpui::Point<gpui::Pixels>) -> (f32, f32) {
+        (f32::from(position.x), f32::from(position.y) - ui::TOOLBAR_HEIGHT)
+    }
+
     fn render_image_area(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex_grow()
@@ -305,7 +311,7 @@ impl RevealApp {
                         return;
                     }
                     let intrinsic = this.viewer.current_intrinsic();
-                    let point = (f32::from(event.position.x), f32::from(event.position.y));
+                    let point = this.to_image_area(event.position);
                     if this.viewer.transform.image_contains(intrinsic, this.viewer.viewport, point)
                     {
                         this.drag_from = None;

@@ -21,12 +21,21 @@ impl Default for ViewTransform {
 
 impl ViewTransform {
     pub fn fit_zoom(image: (f32, f32), viewport: (f32, f32), mode: FitMode) -> f32 {
+        Self::fit_zoom_with(image, viewport, mode, 1.0)
+    }
+
+    pub fn fit_zoom_with(
+        image: (f32, f32),
+        viewport: (f32, f32),
+        mode: FitMode,
+        original_zoom: f32,
+    ) -> f32 {
         if image.0 <= 0.0 || image.1 <= 0.0 {
             return 1.0;
         }
         let scale = (viewport.0 / image.0).min(viewport.1 / image.1);
         match mode {
-            FitMode::Original => 1.0,
+            FitMode::Original => original_zoom,
             FitMode::Fit => scale,
             FitMode::FitBest => scale.min(1.0),
             FitMode::Free => scale,
@@ -34,16 +43,30 @@ impl ViewTransform {
     }
 
     pub fn apply_fit(&mut self, image: (f32, f32), viewport: (f32, f32)) {
+        self.apply_fit_with(image, viewport, 1.0);
+    }
+
+    pub fn apply_fit_with(&mut self, image: (f32, f32), viewport: (f32, f32), original_zoom: f32) {
         if self.fit == FitMode::Free {
             return;
         }
-        self.zoom = Self::fit_zoom(image, viewport, self.fit);
+        self.zoom = Self::fit_zoom_with(image, viewport, self.fit, original_zoom);
         self.offset = (0.0, 0.0);
     }
 
     pub fn set_fit(&mut self, fit: FitMode, image: (f32, f32), viewport: (f32, f32)) {
+        self.set_fit_with(fit, image, viewport, 1.0);
+    }
+
+    pub fn set_fit_with(
+        &mut self,
+        fit: FitMode,
+        image: (f32, f32),
+        viewport: (f32, f32),
+        original_zoom: f32,
+    ) {
         self.fit = fit;
-        self.apply_fit(image, viewport);
+        self.apply_fit_with(image, viewport, original_zoom);
     }
 
     pub fn displayed_size(&self, image: (f32, f32)) -> (f32, f32) {
