@@ -27,6 +27,16 @@ runs:
         targets: ${{ inputs.targets }}
         components: ${{ inputs.components }}
 
+    - name: Ensure targets for the pinned toolchain
+      if: inputs.targets != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        IFS=',' read -ra requested <<< "${{ inputs.targets }}"
+        for target in "${requested[@]}"; do
+          rustup target add "${target// /}"
+        done
+
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       with:
         key: ${{ inputs.cache-key }}
