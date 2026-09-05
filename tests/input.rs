@@ -24,11 +24,28 @@ fn default_bindings_match_upstream() {
         ("f", Action::ImgFit),
         ("e", Action::ImgFitBest),
         ("f11", Action::ToggleFullscreen),
-        ("return", Action::ToggleFullscreen),
+        ("enter", Action::ToggleFullscreen),
+        ("+", Action::ZoomIn),
+        ("=", Action::ZoomIn),
+        ("-", Action::ZoomOut),
         ("p", Action::PlayPresent),
     ] {
         assert_eq!(b.action_for(key, plain()), Some(expected), "binding for {key}");
     }
+}
+
+#[test]
+fn legacy_key_names_from_saved_configs_are_migrated() {
+    let mut b = Bindings::default();
+    let mut overrides = BTreeMap::new();
+    overrides.insert("toggle_fullscreen".to_owned(), vec!["return".to_owned()]);
+    overrides.insert("zoom_in".to_owned(), vec!["plus".to_owned()]);
+    overrides.insert("zoom_out".to_owned(), vec!["minus".to_owned()]);
+    b.apply_overrides(&overrides);
+
+    assert_eq!(b.action_for("enter", plain()), Some(Action::ToggleFullscreen));
+    assert_eq!(b.action_for("+", plain()), Some(Action::ZoomIn));
+    assert_eq!(b.action_for("-", plain()), Some(Action::ZoomOut));
 }
 
 #[test]

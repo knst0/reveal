@@ -270,7 +270,7 @@ impl Render for RevealApp {
                     return;
                 }
                 let cursor = (f32::from(event.position.x), f32::from(event.position.y));
-                this.viewer.zoom_at(1.0 + delta * 0.1, cursor);
+                this.viewer.zoom_at(1.1f32.powf(delta.clamp(-5.0, 5.0)), cursor);
                 cx.notify();
             }))
             .child(self.render_toolbar(p, cx))

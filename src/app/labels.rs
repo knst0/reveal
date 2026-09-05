@@ -33,7 +33,7 @@ pub fn pretty_key(key: &str) -> String {
         "right" => "\u{2192}".to_owned(),
         "up" => "\u{2191}".to_owned(),
         "down" => "\u{2193}".to_owned(),
-        "return" => "Enter".to_owned(),
+        "enter" | "return" => "Enter".to_owned(),
         "escape" => "Esc".to_owned(),
         "pagedown" => "PgDn".to_owned(),
         "pageup" => "PgUp".to_owned(),

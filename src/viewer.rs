@@ -137,15 +137,22 @@ impl Viewer {
     }
 
     pub fn open(&mut self, path: &Path) -> std::io::Result<()> {
-        match self.cache.block_on(path, 0) {
-            Ok(_) => {
-                self.pending = None;
-                self.present(path);
-            }
-            Err(e) => self.status = Some(format!("{}: {e}", path.display())),
-        }
         self.directory = Directory::open_at(path)?;
         self.cache.sync_to_directory(&self.directory);
+        let target = if path.is_dir() {
+            self.directory.current().map(Path::to_path_buf)
+        } else {
+            Some(path.to_path_buf())
+        };
+        if let Some(target) = target {
+            match self.cache.block_on(&target, self.directory.current_index()) {
+                Ok(_) => {
+                    self.pending = None;
+                    self.present(&target);
+                }
+                Err(e) => self.status = Some(format!("{}: {e}", target.display())),
+            }
+        }
         self.cache.prefetch_neighbours(&self.directory);
         Ok(())
     }

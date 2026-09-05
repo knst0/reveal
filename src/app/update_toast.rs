@@ -98,6 +98,9 @@ impl RevealApp {
             update::skip_version(&mut self.cache, &version);
         }
         self.save_cache();
+        if let Err(e) = self.config.save() {
+            log::warn!("failed to save config: {e}");
+        }
         self.update_notice = None;
     }
 

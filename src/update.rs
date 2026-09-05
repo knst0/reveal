@@ -31,17 +31,46 @@ pub enum UpdateNotice {
     Upgraded { from: Option<String>, to: String },
 }
 
-pub fn is_newer(current: &str, candidate: &str) -> bool {
-    fn parts(v: &str) -> Vec<u64> {
-        v.trim_start_matches('v')
-            .split('-')
-            .next()
-            .unwrap_or_default()
-            .split('.')
-            .map(|p| p.trim().parse().unwrap_or(0))
-            .collect()
+fn split_version(v: &str) -> (Vec<u64>, Option<&str>) {
+    let v = v.trim_start_matches('v').trim();
+    let v = v.split('+').next().unwrap_or_default();
+    let (core, pre) = match v.split_once('-') {
+        Some((core, pre)) => (core, Some(pre)),
+        None => (v, None),
+    };
+    let numbers = core.split('.').map(|p| p.trim().parse().unwrap_or(0)).collect();
+    (numbers, pre.filter(|p| !p.is_empty()))
+}
+
+fn compare_prerelease(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let mut left = a.split('.');
+    let mut right = b.split('.');
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) => {
+                let ordering = match (x.parse::<u64>(), y.parse::<u64>()) {
+                    (Ok(x), Ok(y)) => x.cmp(&y),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => x.cmp(y),
+                };
+                if ordering != Ordering::Equal {
+                    return ordering;
+                }
+            }
+        }
     }
-    let (a, b) = (parts(current), parts(candidate));
+}
+
+pub fn is_newer(current: &str, candidate: &str) -> bool {
+    use std::cmp::Ordering;
+    let (a, a_pre) = split_version(current);
+    let (b, b_pre) = split_version(candidate);
+
     let len = a.len().max(b.len());
     for i in 0..len {
         let (x, y) = (a.get(i).copied().unwrap_or(0), b.get(i).copied().unwrap_or(0));
@@ -49,7 +78,13 @@ pub fn is_newer(current: &str, candidate: &str) -> bool {
             return y > x;
         }
     }
-    false
+
+    match (a_pre, b_pre) {
+        (None, None) => false,
+        (None, Some(_)) => false,
+        (Some(_), None) => true,
+        (Some(x), Some(y)) => compare_prerelease(x, y) == Ordering::Less,
+    }
 }
 
 pub fn is_prerelease(version: &str) -> bool {

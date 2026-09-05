@@ -1,5 +1,15 @@
 use std::collections::BTreeMap;
 
+fn canonical_key(key: &str) -> String {
+    match key {
+        "return" => "enter".to_owned(),
+        "plus" => "+".to_owned(),
+        "minus" => "-".to_owned(),
+        "esc" => "escape".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Action {
     FileOpen,
@@ -111,7 +121,11 @@ impl Binding {
         let mut modifiers = Modifiers::default();
         let mut key = None;
 
-        for part in text.split('+') {
+        let trimmed = text.trim();
+        let literal_plus = trimmed.ends_with('+');
+        let head = if literal_plus { &trimmed[..trimmed.len() - 1] } else { trimmed };
+
+        for part in head.split('+') {
             let part = part.trim();
             if part.is_empty() {
                 continue;
@@ -120,8 +134,12 @@ impl Binding {
                 "alt" => modifiers.alt = true,
                 "cmdctrl" | "ctrl" | "cmd" => modifiers.cmd_ctrl = true,
                 "shift" => modifiers.shift = true,
-                other => key = Some(other.to_owned()),
+                other => key = Some(canonical_key(other)),
             }
+        }
+
+        if literal_plus {
+            key = Some("+".to_owned());
         }
 
         key.map(|key| Binding { key, modifiers })
@@ -241,12 +259,12 @@ pub const DEFAULT_BINDINGS: &[(Action, &[&str])] = &[
     (Action::PanDown, &["down"]),
     (Action::PanLeft, &["shift+left"]),
     (Action::PanRight, &["shift+right"]),
-    (Action::ZoomIn, &["plus", "="]),
-    (Action::ZoomOut, &["minus", "-"]),
+    (Action::ZoomIn, &["+", "="]),
+    (Action::ZoomOut, &["-"]),
     (Action::PlayAnim, &["alt+a", "space"]),
     (Action::PlayPresent, &["p"]),
     (Action::PlayPresentRandom, &["alt+p"]),
-    (Action::ToggleFullscreen, &["f11", "return"]),
+    (Action::ToggleFullscreen, &["f11", "enter"]),
     (Action::ToggleAntialias, &["s"]),
     (Action::ToggleTheme, &["t"]),
     (Action::ToggleBottomBar, &["b"]),

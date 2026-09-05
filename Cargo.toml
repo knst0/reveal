@@ -88,13 +88,13 @@ panic = "abort"
 strip = "symbols"
 incremental = false
 
-[profile.dev.package."*"]
-opt-level = 3
-
 [profile.dev]
 opt-level = 0
 debug = true
 split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+opt-level = 3
 
 [[bench]]
 name = "resize"
