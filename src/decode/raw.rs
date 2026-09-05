@@ -15,6 +15,11 @@ pub fn is_raw_extension(ext: &str) -> bool {
     RAW_EXTENSIONS.contains(&ext)
 }
 
+fn to_decoded(image: image::DynamicImage) -> DecodedImage {
+    let rgba = image.to_rgba8();
+    DecodedImage { width: rgba.width(), height: rgba.height(), rgba: rgba.into_raw() }
+}
+
 impl Decoder for RawDecoder {
     fn name(&self) -> &'static str {
         "raw"
@@ -29,8 +34,21 @@ impl Decoder for RawDecoder {
         let source = RawSource::new_from_slice(req.bytes);
         let decoder =
             rawler::get_decoder(&source).map_err(|e| DecodeError::Decode(e.to_string()))?;
+        let params = RawDecodeParams::default();
+
+        if req.target_width > 0
+            && req.target_height > 0
+            && let Ok(Some(preview)) = decoder
+                .full_image(&source, &params)
+                .or_else(|_| decoder.preview_image(&source, &params))
+            && preview.width() >= req.target_width
+            && preview.height() >= req.target_height
+        {
+            return Ok(Decoded::Still(to_decoded(preview)));
+        }
+
         let raw = decoder
-            .raw_image(&source, &RawDecodeParams::default(), false)
+            .raw_image(&source, &params, false)
             .map_err(|e| DecodeError::Decode(e.to_string()))?;
         let developed = RawDevelop::default()
             .develop_intermediate(&raw)
@@ -38,11 +56,6 @@ impl Decoder for RawDecoder {
             .to_dynamic_image()
             .ok_or_else(|| DecodeError::Decode("raw develop produced no image".into()))?;
 
-        let rgba = developed.to_rgba8();
-        Ok(Decoded::Still(DecodedImage {
-            width: rgba.width(),
-            height: rgba.height(),
-            rgba: rgba.into_raw(),
-        }))
+        Ok(Decoded::Still(to_decoded(developed)))
     }
 }
