@@ -338,12 +338,12 @@ impl Viewer {
     }
 
     pub fn jump_random(&mut self) {
-        let entries: Vec<PathBuf> = self.directory.entries().to_vec();
         let mut rng = rand::rng();
-        if let Some(path) = entries.choose(&mut rng).cloned() {
-            self.directory.jump_to(&path);
-            self.show(&path);
-        }
+        let Some(path) = self.directory.entries().choose(&mut rng).cloned() else {
+            return;
+        };
+        self.directory.jump_to(&path);
+        self.show(&path);
     }
 
     fn show(&mut self, path: &Path) {
@@ -489,6 +489,16 @@ impl Viewer {
             redraw = true;
         }
         redraw
+    }
+
+    pub fn needs_ticking(&self) -> bool {
+        if self.pending.is_some() || self.cache.inflight_len() > 0 {
+            return true;
+        }
+        if matches!(self.playback.state, PlaybackState::Present | PlaybackState::PresentRandom) {
+            return true;
+        }
+        self.is_animated() && self.playback.state == PlaybackState::Playing
     }
 
     pub fn frame_index(&self) -> usize {

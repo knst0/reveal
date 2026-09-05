@@ -154,13 +154,19 @@ impl RevealApp {
 
     pub fn start_ticker(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
+            let mut interval = Duration::from_millis(16);
             loop {
-                Timer::after(Duration::from_millis(16)).await;
+                Timer::after(interval).await;
                 let alive = this
                     .update(cx, |this, cx| {
                         if this.viewer.tick(Instant::now()) {
                             cx.notify();
                         }
+                        interval = if this.viewer.needs_ticking() {
+                            Duration::from_millis(16)
+                        } else {
+                            Duration::from_millis(100)
+                        };
                     })
                     .is_ok();
                 if !alive {
