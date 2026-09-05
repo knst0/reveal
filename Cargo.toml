@@ -112,3 +112,7 @@ harness = false
 [[bench]]
 name = "decode"
 harness = false
+
+[patch.crates-io]
+gpui = { path = "vendor/gpui" }
+blade-graphics = { path = "vendor/blade-graphics" }
