@@ -49,4 +49,5 @@ runs:
           libasound2-dev \
           libfontconfig-dev \
           libgtk-3-dev \
-          libssl-dev
+          libssl-dev \
+          fonts-dejavu-core

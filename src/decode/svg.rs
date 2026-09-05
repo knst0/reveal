@@ -8,20 +8,104 @@ use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, extensio
 
 pub struct SvgDecoder;
 
-static SYSTEM_FONTS: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
+static SYSTEM_FONTS: OnceLock<Arc<FontSetup>> = OnceLock::new();
 
-fn system_fonts() -> Arc<usvg::fontdb::Database> {
+struct FontSetup {
+    db: Arc<usvg::fontdb::Database>,
+    default_family: Option<String>,
+}
+
+#[derive(Default)]
+struct GenericFamilies {
+    serif: Option<String>,
+    sans_serif: Option<String>,
+    cursive: Option<String>,
+    fantasy: Option<String>,
+    monospace: Option<String>,
+}
+
+fn first_present(db: &usvg::fontdb::Database, candidates: &[&str]) -> Option<String> {
+    let has = |name: &str| {
+        db.faces()
+            .any(|face| face.families.iter().any(|(family, _)| family.eq_ignore_ascii_case(name)))
+    };
+    candidates.iter().find(|name| has(name)).map(|name| (*name).to_string())
+}
+
+fn any_family(db: &usvg::fontdb::Database, monospace: bool) -> Option<String> {
+    db.faces()
+        .find(|face| face.monospaced == monospace)
+        .or_else(|| db.faces().next())
+        .and_then(|face| face.families.first().map(|(family, _)| family.clone()))
+}
+
+fn resolve_generic_families(db: &usvg::fontdb::Database) -> GenericFamilies {
+    let fallback = any_family(db, false);
+    let mono_fallback = any_family(db, true).or_else(|| fallback.clone());
+    GenericFamilies {
+        serif: first_present(
+            db,
+            &["Times New Roman", "Liberation Serif", "DejaVu Serif", "Noto Serif", "Georgia"],
+        )
+        .or_else(|| fallback.clone()),
+        sans_serif: first_present(
+            db,
+            &["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans", "Noto Sans", "Ubuntu"],
+        )
+        .or_else(|| fallback.clone()),
+        cursive: first_present(db, &["Comic Sans MS", "Comic Neue", "URW Chancery L"])
+            .or_else(|| fallback.clone()),
+        fantasy: first_present(db, &["Impact", "Papyrus", "Ubuntu"]).or_else(|| fallback.clone()),
+        monospace: first_present(
+            db,
+            &[
+                "Courier New",
+                "Liberation Mono",
+                "DejaVu Sans Mono",
+                "Noto Sans Mono",
+                "Ubuntu Mono",
+            ],
+        )
+        .or(mono_fallback),
+    }
+}
+
+fn font_setup() -> Arc<FontSetup> {
     SYSTEM_FONTS
         .get_or_init(|| {
             let mut db = usvg::fontdb::Database::new();
             db.load_system_fonts();
-            Arc::new(db)
+            let families = resolve_generic_families(&db);
+            if let Some(name) = families.serif.clone() {
+                db.set_serif_family(name);
+            }
+            if let Some(name) = families.sans_serif.clone() {
+                db.set_sans_serif_family(name);
+            }
+            if let Some(name) = families.cursive.clone() {
+                db.set_cursive_family(name);
+            }
+            if let Some(name) = families.fantasy.clone() {
+                db.set_fantasy_family(name);
+            }
+            if let Some(name) = families.monospace.clone() {
+                db.set_monospace_family(name);
+            }
+            Arc::new(FontSetup { db: Arc::new(db), default_family: families.sans_serif })
         })
         .clone()
 }
 
+fn apply_font_setup(options: &mut usvg::Options<'_>) {
+    let setup = font_setup();
+    options.fontdb = setup.db.clone();
+    if let Some(name) = setup.default_family.clone() {
+        options.font_family = name;
+    }
+}
+
 pub fn warm_font_database() {
-    let _ = system_fonts();
+    let _ = font_setup();
 }
 
 pub const SVG_EXTENSIONS: &[&str] = &["svg", "svgz"];
@@ -57,7 +141,7 @@ impl Decoder for SvgDecoder {
             resources_dir: req.path.parent().map(Path::to_path_buf),
             ..usvg::Options::default()
         };
-        options.fontdb = system_fonts();
+        apply_font_setup(&mut options);
         let tree = usvg::Tree::from_data(req.bytes, &options)
             .map_err(|e| DecodeError::Decode(e.to_string()))?;
 
