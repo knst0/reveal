@@ -5,4 +5,4 @@ Exec=reveal %f
 Icon=reveal
 Terminal=false
 Categories=Graphics;Viewer;
-MimeType=image/avif;image/bmp;image/gif;image/jpeg;image/jxl;image/png;image/svg+xml;image/tiff;image/vnd.radiance;image/webp;image/x-icon;image/x-portable-anymap;image/x-tga;
+MimeType=image/avif;image/avif-sequence;image/bmp;image/gif;image/jpeg;image/jxl;image/png;image/svg+xml;image/tiff;image/vnd.radiance;image/webp;image/x-icon;image/x-portable-anymap;image/x-tga;

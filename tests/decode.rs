@@ -112,3 +112,31 @@ fn decodes_jpeg_xl_still() {
         _ => panic!("expected still"),
     }
 }
+
+fn avif_bytes(w: u32, h: u32, rgba: [u8; 4]) -> Vec<u8> {
+    let data: Vec<u8> = rgba.iter().copied().cycle().take(w as usize * h as usize * 4).collect();
+    let buffer = zenpixels::PixelBuffer::from_vec(data, w, h, zenpixels::PixelDescriptor::RGBA8)
+        .expect("pixel buffer");
+    zenavif::encode(&buffer).expect("avif encode").avif_file
+}
+
+#[test]
+fn decodes_avif_still() {
+    let bytes = avif_bytes(48, 24, [200, 100, 50, 255]);
+    let path = Path::new("sample.avif");
+    let out = decode::decode(&req(path, &bytes)).unwrap();
+    match out.decoded {
+        Decoded::Still(img) => {
+            assert_eq!((img.width, img.height), (48, 24));
+            assert_eq!(img.rgba.len(), 48 * 24 * 4);
+            assert_eq!(img.rgba[3], 255);
+        }
+        _ => panic!("expected still"),
+    }
+}
+
+#[test]
+fn avif_is_a_supported_extension() {
+    assert!(decode::is_supported(Path::new("photo.avif")));
+    assert!(decode::supported_extensions().contains(&"avif"));
+}

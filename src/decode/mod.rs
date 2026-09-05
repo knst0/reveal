@@ -1,3 +1,4 @@
+mod avif;
 mod jxl;
 mod raster;
 #[cfg(feature = "raw")]
@@ -73,7 +74,8 @@ pub trait Decoder: Send + Sync {
 }
 
 fn decoders() -> Vec<&'static dyn Decoder> {
-    let mut list: Vec<&'static dyn Decoder> = vec![&svg::SvgDecoder, &jxl::JxlDecoder];
+    let mut list: Vec<&'static dyn Decoder> =
+        vec![&svg::SvgDecoder, &jxl::JxlDecoder, &avif::AvifDecoder];
     #[cfg(feature = "raw")]
     list.push(&raw::RawDecoder);
     list.push(&raster::RasterDecoder);
@@ -95,7 +97,11 @@ pub fn is_supported(path: &Path) -> bool {
     let Some(ext) = extension_of(path) else {
         return false;
     };
-    if is_raster_extension(&ext) || svg::is_svg_extension(&ext) || jxl::is_jxl_extension(&ext) {
+    if is_raster_extension(&ext)
+        || svg::is_svg_extension(&ext)
+        || jxl::is_jxl_extension(&ext)
+        || avif::is_avif_extension(&ext)
+    {
         return true;
     }
     #[cfg(feature = "raw")]
@@ -109,6 +115,7 @@ pub fn supported_extensions() -> Vec<&'static str> {
     let mut list: Vec<&'static str> = raster::RASTER_EXTENSIONS.to_vec();
     list.extend_from_slice(svg::SVG_EXTENSIONS);
     list.extend_from_slice(jxl::JXL_EXTENSIONS);
+    list.extend_from_slice(avif::AVIF_EXTENSIONS);
     #[cfg(feature = "raw")]
     list.extend_from_slice(raw::RAW_EXTENSIONS);
     list.sort_unstable();

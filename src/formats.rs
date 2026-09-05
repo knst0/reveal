@@ -18,6 +18,7 @@ pub const FORMATS: &[FormatInfo] = &[
     FormatInfo { extension: "pnm", mime: "image/x-portable-anymap", description: "PNM image" },
     FormatInfo { extension: "hdr", mime: "image/vnd.radiance", description: "Radiance HDR" },
     FormatInfo { extension: "avif", mime: "image/avif", description: "AVIF image" },
+    FormatInfo { extension: "avifs", mime: "image/avif-sequence", description: "AVIF sequence" },
     FormatInfo { extension: "svg", mime: "image/svg+xml", description: "SVG image" },
     FormatInfo { extension: "jxl", mime: "image/jxl", description: "JPEG XL image" },
 ];
@@ -45,6 +46,7 @@ fn uti(mime: &str, extension: &str) -> String {
         "image/x-tga" => "com.truevision.tga-image".to_owned(),
         "image/vnd.radiance" => "public.radiance".to_owned(),
         "image/avif" => "public.avif".to_owned(),
+        "image/avif-sequence" => "public.avif".to_owned(),
         "image/svg+xml" => "public.svg-image".to_owned(),
         "image/jxl" => "public.jpeg-xl".to_owned(),
         _ => format!("org.reveal.{extension}"),

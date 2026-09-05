@@ -10,12 +10,12 @@ use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame, e
 pub struct RasterDecoder;
 
 pub const RASTER_EXTENSIONS: &[&str] = &[
-    "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "tga", "dds", "ff", "avif",
-    "qoi", "pnm", "pbm", "pgm", "ppm", "pam", "exr", "hdr",
+    "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "tga", "ff", "qoi", "pnm",
+    "pbm", "pgm", "ppm", "pam", "exr", "hdr",
 ];
 
 pub fn is_raster_extension(ext: &str) -> bool {
-    ImageFormat::from_extension(ext).is_some()
+    ImageFormat::from_extension(ext).is_some_and(|f| f.reading_enabled())
 }
 
 fn sniff(bytes: &[u8]) -> Option<ImageFormat> {
