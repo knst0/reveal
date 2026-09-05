@@ -1,0 +1,52 @@
+name: Setup Rust
+description: Install the Rust toolchain, restore the cargo cache and install Linux system dependencies.
+
+inputs:
+  targets:
+    description: Comma-separated list of rustup targets to install
+    required: false
+    default: ''
+  components:
+    description: Comma-separated list of rustup components to install
+    required: false
+    default: ''
+  cache-key:
+    description: Extra key appended to the cargo cache key
+    required: false
+    default: ''
+  cache-save:
+    description: Whether to save the cargo cache back on success
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      with:
+        targets: ${{ inputs.targets }}
+        components: ${{ inputs.components }}
+
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      with:
+        key: ${{ inputs.cache-key }}
+        save-if: ${{ inputs.cache-save == 'true' }}
+
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          libxkbcommon-dev \
+          libxkbcommon-x11-dev \
+          libxcb1-dev \
+          libxcb-xkb-dev \
+          libxcb-shape0-dev \
+          libxcb-xfixes0-dev \
+          libwayland-dev \
+          libasound2-dev \
+          libfontconfig-dev \
+          libgtk-3-dev \
+          libssl-dev
