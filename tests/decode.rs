@@ -140,3 +140,13 @@ fn avif_is_a_supported_extension() {
     assert!(decode::is_supported(Path::new("photo.avif")));
     assert!(decode::supported_extensions().contains(&"avif"));
 }
+
+#[test]
+fn renders_svg_text_with_system_fonts() {
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60"><rect width="200" height="60" fill="white"/><text x="10" y="40" font-family="sans-serif" font-size="36" fill="black">Hello</text></svg>"#;
+    let path = Path::new("text.svg");
+    let out = decode::decode(&req(path, svg)).unwrap();
+    let Decoded::Still(img) = out.decoded else { panic!("expected still") };
+    let dark = img.rgba.chunks_exact(4).filter(|p| p[0] < 128 && p[3] > 0).count();
+    assert!(dark > 0, "svg <text> rendered no glyph pixels");
+}

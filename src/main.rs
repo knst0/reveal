@@ -21,6 +21,8 @@ fn main() {
     env_logger::init();
     let args = Args::parse();
 
+    std::thread::spawn(reveal::decode::warm_font_database);
+
     let config = Configuration::load();
     let mut bindings = Bindings::default();
     if let Some(overrides) = config.bindings.as_ref() {

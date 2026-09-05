@@ -1,9 +1,28 @@
+use std::path::Path;
+use std::sync::{Arc, OnceLock};
+
 use resvg::tiny_skia;
 use usvg::Transform;
 
 use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, extension_of};
 
 pub struct SvgDecoder;
+
+static SYSTEM_FONTS: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
+
+fn system_fonts() -> Arc<usvg::fontdb::Database> {
+    SYSTEM_FONTS
+        .get_or_init(|| {
+            let mut db = usvg::fontdb::Database::new();
+            db.load_system_fonts();
+            Arc::new(db)
+        })
+        .clone()
+}
+
+pub fn warm_font_database() {
+    let _ = system_fonts();
+}
 
 pub const SVG_EXTENSIONS: &[&str] = &["svg", "svgz"];
 
@@ -34,7 +53,11 @@ impl Decoder for SvgDecoder {
     }
 
     fn decode(&self, req: &DecodeRequest<'_>) -> Result<Decoded, DecodeError> {
-        let options = usvg::Options::default();
+        let mut options = usvg::Options {
+            resources_dir: req.path.parent().map(Path::to_path_buf),
+            ..usvg::Options::default()
+        };
+        options.fontdb = system_fonts();
         let tree = usvg::Tree::from_data(req.bytes, &options)
             .map_err(|e| DecodeError::Decode(e.to_string()))?;
 
