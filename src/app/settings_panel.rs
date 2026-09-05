@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-    div, px,
+    AppContext, Context, InteractiveElement, IntoElement, ParentElement,
+    StatefulInteractiveElement, Styled, div, px,
 };
 use reveal::config::Channel;
 use reveal::input::{ALL_ACTIONS, Action, Binding};
@@ -101,11 +101,11 @@ impl RevealApp {
 
         let mut appearance = Vec::new();
         for field in APPEARANCE_FIELDS {
-            appearance.push(toggle_row(*field, config.clone(), p, cx));
+            appearance.push(toggle_row(*field, &config, p, cx));
         }
         let mut updates = Vec::new();
         for field in UPDATE_FIELDS {
-            updates.push(toggle_row(*field, config.clone(), p, cx));
+            updates.push(toggle_row(*field, &config, p, cx));
         }
 
         self.settings_body()
@@ -159,8 +159,22 @@ impl RevealApp {
                     .child(ui::toast_button("set-defaults", p, "Set defaults", false).on_click(
                         cx.listener(|this, _e, _w, cx| {
                             if let Some(state) = this.settings.as_mut() {
-                                state.register_associations();
+                                state.notice = Some("Setting defaults\u{2026}".to_owned());
                             }
+                            cx.spawn(async move |this, cx| {
+                                let notice = cx
+                                    .background_spawn(async {
+                                        reveal::settings::association_notice()
+                                    })
+                                    .await;
+                                let _ = this.update(cx, |this, cx| {
+                                    if let Some(state) = this.settings.as_mut() {
+                                        state.notice = Some(notice);
+                                    }
+                                    cx.notify();
+                                });
+                            })
+                            .detach();
                             cx.notify();
                         }),
                     )),
@@ -335,12 +349,12 @@ fn section_label(p: Palette, text: &'static str) -> gpui::Div {
 
 fn toggle_row(
     field: ToggleField,
-    config: reveal::config::Configuration,
+    config: &reveal::config::Configuration,
     p: Palette,
     cx: &mut Context<RevealApp>,
 ) -> gpui::AnyElement {
-    let value = field.get(&config);
-    let enabled = field.enabled(&config);
+    let value = field.get(config);
+    let enabled = field.enabled(config);
 
     div()
         .flex()

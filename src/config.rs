@@ -138,7 +138,7 @@ pub struct Cache {
 }
 
 fn project_dir() -> Option<PathBuf> {
-    directories_next::ProjectDirs::from("", "", "reveal").map(|d| d.config_dir().to_path_buf())
+    directories::ProjectDirs::from("", "", "reveal").map(|d| d.config_dir().to_path_buf())
 }
 
 pub fn config_path() -> Option<PathBuf> {
@@ -149,7 +149,7 @@ pub fn cache_path() -> Option<PathBuf> {
     project_dir().map(|d| d.join(CACHE_FILE))
 }
 
-fn load_toml<T: Default + for<'de> Deserialize<'de>>(path: &Path) -> T {
+fn load_json<T: Default + for<'de> Deserialize<'de>>(path: &Path) -> T {
     let Ok(text) = std::fs::read_to_string(path) else {
         return T::default();
     };
@@ -162,7 +162,7 @@ fn load_toml<T: Default + for<'de> Deserialize<'de>>(path: &Path) -> T {
     }
 }
 
-fn save_toml<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
+fn save_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -174,7 +174,7 @@ fn save_toml<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
 
 impl Configuration {
     pub fn load_from(path: &Path) -> Self {
-        load_toml(path)
+        load_json(path)
     }
 
     pub fn load() -> Self {
@@ -182,7 +182,7 @@ impl Configuration {
     }
 
     pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
-        save_toml(path, self)
+        save_json(path, self)
     }
 
     pub fn save(&self) -> std::io::Result<()> {
@@ -195,7 +195,7 @@ impl Configuration {
 
 impl Cache {
     pub fn load_from(path: &Path) -> Self {
-        load_toml(path)
+        load_json(path)
     }
 
     pub fn load() -> Self {
@@ -203,7 +203,7 @@ impl Cache {
     }
 
     pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
-        save_toml(path, self)
+        save_json(path, self)
     }
 
     pub fn save(&self) -> std::io::Result<()> {

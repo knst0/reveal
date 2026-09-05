@@ -54,7 +54,7 @@ fn collect_frames(frames: image::Frames<'_>) -> Result<Vec<Frame>, DecodeError> 
 }
 
 fn decode_animated(format: ImageFormat, bytes: &[u8]) -> Option<Result<Vec<Frame>, DecodeError>> {
-    let cursor = Cursor::new(bytes.to_vec());
+    let cursor = Cursor::new(bytes);
     match format {
         ImageFormat::Gif => Some(
             image::codecs::gif::GifDecoder::new(cursor)

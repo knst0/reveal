@@ -210,19 +210,25 @@ impl SettingsState {
     }
 
     pub fn register_associations(&mut self) {
-        match crate::associations::register() {
-            Ok(outcome) => {
-                let mut text = format!("Registered {} formats.", outcome.registered);
-                if let Some(extra) = outcome.needs_user_action {
-                    text.push(' ');
-                    text.push_str(&extra);
-                }
-                self.notice = Some(text);
-            }
-            Err(e) => self.notice = Some(format!("Could not set defaults: {e}")),
-        }
+        self.notice = Some(association_notice());
     }
+}
 
+pub fn association_notice() -> String {
+    match crate::associations::register() {
+        Ok(outcome) => {
+            let mut text = format!("Registered {} formats.", outcome.registered);
+            if let Some(extra) = outcome.needs_user_action {
+                text.push(' ');
+                text.push_str(&extra);
+            }
+            text
+        }
+        Err(e) => format!("Could not set defaults: {e}"),
+    }
+}
+
+impl SettingsState {
     pub fn persist(&mut self) -> std::io::Result<()> {
         self.config.bindings =
             self.bindings.differs_from_defaults().then(|| self.bindings.to_overrides());

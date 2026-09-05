@@ -1,10 +1,18 @@
-use gpui::{
-    AppContext, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-};
+use gpui::{Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement};
 use reveal::ui::{self, Palette};
 use reveal::update::{self, UpdateNotice, UpdateStatus};
 
 use super::RevealApp;
+
+async fn on_blocking_thread<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    let (tx, rx) = futures::channel::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(work());
+    });
+    rx.await.ok()
+}
 
 impl RevealApp {
     pub fn save_cache(&self) {
@@ -26,11 +34,13 @@ impl RevealApp {
         let channel = self.update_settings.channel;
         let auto = self.update_settings.should_auto_install();
         cx.spawn(async move |this, cx| {
-            let status = cx
-                .background_spawn(async move {
-                    if auto { update::install(channel) } else { update::check(channel) }
-                })
-                .await;
+            let Some(status) = on_blocking_thread(move || {
+                if auto { update::install(channel) } else { update::check(channel) }
+            })
+            .await
+            else {
+                return;
+            };
 
             this.update(cx, |this, cx| {
                 update::record_check(&mut this.cache);
@@ -64,7 +74,9 @@ impl RevealApp {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
-            let status = cx.background_spawn(async move { update::install(channel) }).await;
+            let Some(status) = on_blocking_thread(move || update::install(channel)).await else {
+                return;
+            };
             this.update(cx, |this, cx| {
                 this.update_busy = false;
                 match status {

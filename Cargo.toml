@@ -51,9 +51,10 @@ tools = []
 arboard = "3.6"
 clap = { version = "4", features = ["derive"] }
 crossbeam-channel = "0.5"
-directories-next = "2"
+directories = "6.0.0"
 env_logger = "0.11"
 fast_image_resize = { version = "6.1", features = ["rayon"] }
+futures = { version = "0.3.34", default-features = false, features = ["std"] }
 gpui = "0.2"
 image = "0.25"
 jxl-oxide = "0.12"

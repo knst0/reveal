@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 pub fn report_path() -> PathBuf {
-    directories_next::ProjectDirs::from("", "", "reveal")
+    directories::ProjectDirs::from("", "", "reveal")
         .map(|d| d.data_local_dir().to_path_buf())
         .unwrap_or_else(std::env::temp_dir)
         .join("reveal-panic.txt")
