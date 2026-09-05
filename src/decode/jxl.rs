@@ -23,7 +23,7 @@ fn looks_like_jxl(bytes: &[u8]) -> bool {
 fn to_rgba8(samples: &[f32], channels: usize, width: u32, height: u32) -> Vec<u8> {
     let px = (width as usize) * (height as usize);
     let mut out = vec![0u8; px * 4];
-    let available = if channels == 0 { 0 } else { samples.len() / channels };
+    let available = samples.len().checked_div(channels).unwrap_or(0);
     for i in 0..px.min(available) {
         let src = &samples[i * channels..];
         let (r, g, b, a) = match channels {

@@ -241,13 +241,13 @@ fn copy_picture(pic: &Dav1dPicture) -> Result<YuvPicture, DecodeError> {
 
     let luma = pic.data[0].ok_or_else(|| err("the av1 picture has no luma plane"))?;
     let mut planes =
-        vec![read_plane(luma.as_ptr() as *const u8, pic.stride[0] as isize, width, height, bpc)?];
+        vec![read_plane(luma.as_ptr() as *const u8, pic.stride[0], width, height, bpc)?];
 
     if !monochrome {
         let (cw, ch) = plane_dims(layout, width, height);
         for i in 1..3 {
             let p = pic.data[i].ok_or_else(|| err("the av1 picture has no chroma plane"))?;
-            planes.push(read_plane(p.as_ptr() as *const u8, pic.stride[1] as isize, cw, ch, bpc)?);
+            planes.push(read_plane(p.as_ptr() as *const u8, pic.stride[1], cw, ch, bpc)?);
         }
     }
 
