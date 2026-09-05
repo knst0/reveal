@@ -8,7 +8,7 @@ mod svg;
 use std::path::Path;
 use std::time::Duration;
 
-pub use raster::is_raster_extension;
+pub use raster::{MAX_ANIMATION_BYTES, is_raster_extension};
 pub use svg::warm_font_database;
 
 #[derive(Debug, Clone)]

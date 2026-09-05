@@ -186,3 +186,36 @@ fn svg_rasterisation_stays_within_the_pixel_budget() {
     assert!(img.width >= 8000, "should still cover the requested size");
     assert!(img.width < 16000, "headroom should be capped, not doubled outright");
 }
+
+#[test]
+fn a_long_animation_is_truncated_to_stay_within_memory() {
+    let (w, h) = (600u32, 600u32);
+    let per_frame = w as usize * h as usize * 4;
+    let budget_frames = reveal::decode::MAX_ANIMATION_BYTES / per_frame;
+    let frame_count = budget_frames + 40;
+
+    let mut bytes = Vec::new();
+    {
+        let mut enc = image::codecs::gif::GifEncoder::new(&mut bytes);
+        for i in 0..frame_count {
+            let buf = image::RgbaImage::from_pixel(w, h, image::Rgba([i as u8, 20, 30, 255]));
+            enc.encode_frame(image::Frame::from_parts(
+                buf,
+                0,
+                0,
+                image::Delay::from_numer_denom_ms(20, 1),
+            ))
+            .unwrap();
+        }
+    }
+
+    let path = Path::new("long.gif");
+    let out = decode::decode(&req(path, &bytes)).unwrap();
+    let Decoded::Animation(frames) = out.decoded else { panic!("expected animation") };
+    assert!(frames.len() < frame_count, "the animation should have been truncated");
+    let total: usize = frames.iter().map(|f| f.image.rgba.len()).sum();
+    assert!(
+        total <= reveal::decode::MAX_ANIMATION_BYTES + per_frame,
+        "kept {total} bytes, over the budget"
+    );
+}

@@ -35,12 +35,16 @@ fn map_err(e: image::ImageError) -> DecodeError {
     DecodeError::Decode(e.to_string())
 }
 
+pub const MAX_ANIMATION_BYTES: usize = 512 * 1024 * 1024;
+
 fn collect_frames(frames: image::Frames<'_>) -> Result<Vec<Frame>, DecodeError> {
     let mut out = Vec::new();
+    let mut bytes = 0usize;
     for frame in frames {
         let frame = frame.map_err(map_err)?;
         let delay = Duration::from(frame.delay());
         let buffer = frame.into_buffer();
+        bytes = bytes.saturating_add(buffer.as_raw().len());
         out.push(Frame {
             image: DecodedImage {
                 width: buffer.width(),
@@ -49,6 +53,10 @@ fn collect_frames(frames: image::Frames<'_>) -> Result<Vec<Frame>, DecodeError> 
             },
             delay,
         });
+        if bytes >= MAX_ANIMATION_BYTES {
+            log::warn!("animation truncated at {} frames to stay within memory", out.len());
+            break;
+        }
     }
     Ok(out)
 }
