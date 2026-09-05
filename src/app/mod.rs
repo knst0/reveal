@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     App, Context, ExternalPaths, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement, Render, Styled, Timer, Window, div,
+    ParentElement, Render, Styled, Window, div,
 };
 use reveal::actions::Theme;
 use reveal::config::{Cache, Configuration, Updates};
@@ -156,7 +156,7 @@ impl RevealApp {
         cx.spawn(async move |this, cx| {
             let mut interval = Duration::from_millis(16);
             loop {
-                Timer::after(interval).await;
+                cx.background_executor().timer(interval).await;
                 let alive = this
                     .update(cx, |this, cx| {
                         if this.viewer.tick(Instant::now()) {
@@ -318,7 +318,7 @@ impl RevealApp {
 
     fn render_image_area(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
-            .flex_grow()
+            .flex_grow(1.)
             .relative()
             .overflow_hidden()
             .child(ImageElement::new(

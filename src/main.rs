@@ -41,7 +41,7 @@ fn main() {
     let cache = reveal::config::Cache::load();
     let init = AppInit { config, bindings, viewer, cache };
 
-    Application::new().run(move |cx: &mut App| {
+    Application::with_platform(gpui_platform::current_platform(false)).run(move |cx: &mut App| {
         let saved = init.cache.window.clone();
         let bounds = Bounds {
             origin: gpui::point(px(saved.x as f32), px(saved.y as f32)),
@@ -59,7 +59,7 @@ fn main() {
                 WindowOptions { window_bounds: Some(window_bounds), ..Default::default() },
                 |window, cx| {
                     let view = cx.new(|cx| RevealApp::new(init, cx));
-                    window.focus(&view.read(cx).focus.clone());
+                    window.focus(&view.read(cx).focus.clone(), cx);
                     view
                 },
             )

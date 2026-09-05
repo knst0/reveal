@@ -21,7 +21,7 @@ impl RevealApp {
                 self.position_label()
                     .map(|label| div().text_color(ui::color(p.text_muted)).child(label)),
             )
-            .child(div().flex_grow())
+            .child(div().flex_grow(1.))
             .children(
                 self.dimensions_label()
                     .map(|label| div().text_color(ui::color(p.text_muted)).child(label)),

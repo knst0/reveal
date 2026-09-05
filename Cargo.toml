@@ -55,7 +55,8 @@ directories = "6.0.0"
 env_logger = "0.11"
 fast_image_resize = { version = "6.1", features = ["rayon"] }
 futures = { version = "0.3.34", default-features = false, features = ["std"] }
-gpui = "0.2"
+gpui = { git = "https://github.com/zed-industries/zed.git", tag = "v1.18.0" }
+gpui_platform = { git = "https://github.com/zed-industries/zed.git", tag = "v1.18.0", features = ["wayland", "x11"] }
 image = "0.25"
 jxl-oxide = "0.12"
 kamadak-exif = "0.6"
