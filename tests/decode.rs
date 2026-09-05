@@ -44,13 +44,13 @@ fn sniffs_content_over_wrong_extension() {
 }
 
 #[test]
-fn rasterizes_svg_at_target_size() {
+fn rasterizes_svg_above_target_size_for_zoom_headroom() {
     let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>"#;
     let path = Path::new("sample.svg");
     let out = decode::decode(&req(path, svg)).unwrap();
     match out.decoded {
         Decoded::Still(img) => {
-            assert_eq!((img.width, img.height), (256, 256));
+            assert_eq!((img.width, img.height), (512, 512));
             assert_eq!(&img.rgba[..4], &[255, 0, 0, 255]);
         }
         _ => panic!("expected still"),
@@ -166,4 +166,23 @@ fn renders_svg_text_with_system_fonts() {
     let Decoded::Still(img) = out.decoded else { panic!("expected still") };
     let dark = img.rgba.chunks_exact(4).filter(|p| p[0] < 128 && p[3] > 0).count();
     assert!(dark > 0, "svg <text> rendered no glyph pixels");
+}
+
+#[test]
+fn svg_rasterisation_stays_within_the_pixel_budget() {
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="10000" height="10000"><rect width="10000" height="10000" fill="blue"/></svg>"#;
+    let path = Path::new("huge.svg");
+    let request = DecodeRequest {
+        path,
+        bytes: svg,
+        target_width: 8000,
+        target_height: 8000,
+        resample: reveal::render::Resample::Filtered,
+    };
+    let out = decode::decode(&request).unwrap();
+    let Decoded::Still(img) = out.decoded else { panic!("expected still") };
+    let pixels = img.width as u64 * img.height as u64;
+    assert!(pixels <= 96 * 1024 * 1024, "rasterised {pixels} pixels, over budget");
+    assert!(img.width >= 8000, "should still cover the requested size");
+    assert!(img.width < 16000, "headroom should be capped, not doubled outright");
 }

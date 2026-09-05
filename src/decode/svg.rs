@@ -73,6 +73,7 @@ impl Decoder for SvgDecoder {
             let sy = req.target_height as f32 / intrinsic.height();
             sx.min(sy).max(f32::MIN_POSITIVE)
         };
+        let scale = zoom_headroom(scale, intrinsic.width(), intrinsic.height());
 
         let width = (intrinsic.width() * scale).round().max(1.0) as u32;
         let height = (intrinsic.height() * scale).round().max(1.0) as u32;
@@ -83,6 +84,19 @@ impl Decoder for SvgDecoder {
 
         Ok(Decoded::Still(DecodedImage { width, height, rgba: demultiply(pixmap) }))
     }
+}
+
+const ZOOM_HEADROOM: f32 = 2.0;
+const MAX_RASTER_PIXELS: f32 = 96.0 * 1024.0 * 1024.0;
+
+fn zoom_headroom(scale: f32, width: f32, height: f32) -> f32 {
+    let wanted = scale * ZOOM_HEADROOM;
+    let pixels = (width * wanted) * (height * wanted);
+    if pixels <= MAX_RASTER_PIXELS {
+        return wanted;
+    }
+    let budgeted = (MAX_RASTER_PIXELS / (width * height)).sqrt();
+    budgeted.max(scale)
 }
 
 fn demultiply(pixmap: tiny_skia::Pixmap) -> Vec<u8> {
