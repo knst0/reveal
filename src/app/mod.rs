@@ -178,6 +178,8 @@ impl Render for RevealApp {
         if self.drop_hover && !cx.has_active_drag() {
             self.drop_hover = false;
         }
+        self.record_window_geometry(window);
+
         let chrome =
             ui::TOOLBAR_HEIGHT + if self.show_bottom_bar { ui::STATUS_BAR_HEIGHT } else { 0.0 };
         self.viewer.set_viewport(f32::from(size.width), (f32::from(size.height) - chrome).max(1.0));
@@ -288,6 +290,22 @@ impl Render for RevealApp {
 }
 
 impl RevealApp {
+    fn record_window_geometry(&mut self, window: &Window) {
+        let fullscreen = window.is_fullscreen();
+        let maximized = window.is_maximized();
+        self.cache.window.fullscreen = fullscreen;
+        self.cache.window.maximized = maximized;
+        if fullscreen || maximized {
+            return;
+        }
+        if let gpui::WindowBounds::Windowed(bounds) = window.window_bounds() {
+            self.cache.window.x = f32::from(bounds.origin.x) as i32;
+            self.cache.window.y = f32::from(bounds.origin.y) as i32;
+            self.cache.window.w = f32::from(bounds.size.width).max(1.0) as u32;
+            self.cache.window.h = f32::from(bounds.size.height).max(1.0) as u32;
+        }
+    }
+
     fn to_image_area(&self, position: gpui::Point<gpui::Pixels>) -> (f32, f32) {
         (f32::from(position.x), f32::from(position.y) - ui::TOOLBAR_HEIGHT)
     }

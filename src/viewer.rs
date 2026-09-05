@@ -426,6 +426,23 @@ impl Viewer {
         self.set_antialias(!self.antialias());
     }
 
+    pub fn show_pasted(&mut self, image: DecodedImage) {
+        let output = Arc::new(crate::decode::DecodeOutput {
+            decoded: Decoded::Still(image),
+            orientation: crate::decode::Orientation::Normal,
+        });
+        let path = PathBuf::from("(clipboard)");
+        let prepared =
+            Self::prepare(&path, output, self.viewport, self.scale_factor, self.resample);
+        self.pending = None;
+        self.prepared.clear();
+        self.playback.reset();
+        self.status = None;
+        self.transform.fit = FitMode::Fit;
+        self.current = Some(prepared);
+        self.apply_current_fit();
+    }
+
     pub fn original_zoom(&self) -> f32 {
         let Some(current) = self.current.as_ref() else {
             return 1.0;

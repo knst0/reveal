@@ -42,19 +42,37 @@ fn main() {
     let init = AppInit { config, bindings, viewer, cache };
 
     Application::new().run(move |cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                ..Default::default()
-            },
-            |window, cx| {
-                let view = cx.new(|cx| RevealApp::new(init, cx));
-                window.focus(&view.read(cx).focus.clone());
-                view
-            },
-        )
-        .unwrap();
+        let saved = init.cache.window.clone();
+        let bounds = Bounds {
+            origin: gpui::point(px(saved.x as f32), px(saved.y as f32)),
+            size: size(px(saved.w.max(1) as f32), px(saved.h.max(1) as f32)),
+        };
+        let window_bounds = if saved.fullscreen || init.config.window.start_fullscreen {
+            WindowBounds::Fullscreen(bounds)
+        } else if saved.maximized {
+            WindowBounds::Maximized(bounds)
+        } else {
+            WindowBounds::Windowed(bounds)
+        };
+        let view = cx
+            .open_window(
+                WindowOptions { window_bounds: Some(window_bounds), ..Default::default() },
+                |window, cx| {
+                    let view = cx.new(|cx| RevealApp::new(init, cx));
+                    window.focus(&view.read(cx).focus.clone());
+                    view
+                },
+            )
+            .unwrap();
+
+        if let Ok(view) = view.entity(cx) {
+            cx.on_app_quit(move |cx: &mut App| {
+                view.read(cx).save_cache();
+                async {}
+            })
+            .detach();
+        }
+
         cx.activate(true);
     });
 }

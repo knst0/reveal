@@ -41,6 +41,7 @@ impl RevealApp {
             }
             Action::ToggleFullscreen => window.toggle_fullscreen(),
             Action::ImgCopy => self.copy_current(),
+            Action::ImgPaste => self.paste_image(),
             Action::ImgDel => {
                 if self.confirm_delete {
                     self.confirm_delete = false;
@@ -70,7 +71,6 @@ impl RevealApp {
                     self.viewer.playback.set_state(PlaybackState::Paused);
                 }
             }
-            _ => return false,
         }
         true
     }
@@ -104,6 +104,13 @@ impl RevealApp {
             && let Err(e) = reveal::actions::copy_to_clipboard(&output.decoded)
         {
             log::error!("copy failed: {e}");
+        }
+    }
+
+    pub fn paste_image(&mut self) {
+        match reveal::actions::paste_from_clipboard() {
+            Ok(image) => self.viewer.show_pasted(image),
+            Err(e) => log::warn!("paste failed: {e}"),
         }
     }
 

@@ -31,6 +31,20 @@ pub fn copy_to_clipboard(decoded: &Decoded) -> Result<(), ActionError> {
     clipboard.set_image(data).map_err(|e| ActionError::Clipboard(e.to_string()))
 }
 
+pub fn paste_from_clipboard() -> Result<DecodedImage, ActionError> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| ActionError::Clipboard(e.to_string()))?;
+    let image = clipboard.get_image().map_err(|e| ActionError::Clipboard(e.to_string()))?;
+    let (width, height) = (image.width as u32, image.height as u32);
+    if width == 0 || height == 0 {
+        return Err(ActionError::NoImage);
+    }
+    let expected = width as usize * height as usize * 4;
+    let mut rgba = image.bytes.into_owned();
+    rgba.resize(expected, 0);
+    Ok(DecodedImage { width, height, rgba })
+}
+
 pub fn move_to_trash(path: &Path) -> Result<(), ActionError> {
     trash::delete(path).map_err(|e| ActionError::Trash(e.to_string()))
 }
