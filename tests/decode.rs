@@ -114,10 +114,15 @@ fn decodes_jpeg_xl_still() {
 }
 
 fn avif_bytes(w: u32, h: u32, rgba: [u8; 4]) -> Vec<u8> {
-    let data: Vec<u8> = rgba.iter().copied().cycle().take(w as usize * h as usize * 4).collect();
-    let buffer = zenpixels::PixelBuffer::from_vec(data, w, h, zenpixels::PixelDescriptor::RGBA8)
-        .expect("pixel buffer");
-    zenavif::encode(&buffer).expect("avif encode").avif_file
+    let px = rgb::RGBA::new(rgba[0], rgba[1], rgba[2], rgba[3]);
+    let pixels = vec![px; w as usize * h as usize];
+    let img = ravif::Img::new(pixels.as_slice(), w as usize, h as usize);
+    ravif::Encoder::new()
+        .with_quality(100.0)
+        .with_speed(10)
+        .encode_rgba(img)
+        .expect("avif encode")
+        .avif_file
 }
 
 #[test]
@@ -129,7 +134,13 @@ fn decodes_avif_still() {
         Decoded::Still(img) => {
             assert_eq!((img.width, img.height), (48, 24));
             assert_eq!(img.rgba.len(), 48 * 24 * 4);
-            assert_eq!(img.rgba[3], 255);
+            for px in img.rgba.chunks_exact(4) {
+                assert_eq!(px[3], 255);
+                let (r, g, b) = (i32::from(px[0]), i32::from(px[1]), i32::from(px[2]));
+                assert!((r - 200).abs() <= 8, "red {r} is not close to 200");
+                assert!((g - 100).abs() <= 8, "green {g} is not close to 100");
+                assert!((b - 50).abs() <= 8, "blue {b} is not close to 50");
+            }
         }
         _ => panic!("expected still"),
     }

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
@@ -26,6 +26,7 @@ pub struct Loader {
     shared: Arc<(Mutex<Queue>, Condvar)>,
     results: crossbeam_channel::Receiver<LoadResult>,
     next_id: AtomicU64,
+    current: Arc<AtomicUsize>,
     workers: Vec<JoinHandle<()>>,
 }
 
@@ -34,16 +35,45 @@ impl Loader {
         let shared = Arc::new((Mutex::new(Queue::default()), Condvar::new()));
         let (tx, results) = crossbeam_channel::unbounded();
         let threads = threads.max(1);
+        let current = Arc::new(AtomicUsize::new(0));
 
         let workers = (0..threads)
             .map(|_| {
                 let shared = Arc::clone(&shared);
+                let current = Arc::clone(&current);
                 let tx = tx.clone();
-                std::thread::spawn(move || worker_loop(shared, tx))
+                std::thread::spawn(move || worker_loop(shared, current, tx))
             })
             .collect();
 
-        Self { shared, results, next_id: AtomicU64::new(1), workers }
+        Self { shared, results, next_id: AtomicU64::new(1), current, workers }
+    }
+
+    pub fn set_current_index(&self, index: usize) {
+        self.current.store(index, Ordering::Relaxed);
+    }
+
+    pub fn cancel_far_from(&self, index: usize, radius: usize) -> Vec<RequestId> {
+        let (lock, _) = &*self.shared;
+        let mut queue = lock.lock().unwrap();
+        let dropped: Vec<RequestId> = queue
+            .pending
+            .iter()
+            .filter(|r| r.index.abs_diff(index) > radius)
+            .map(|r| r.id)
+            .collect();
+        queue.pending.retain(|r| r.index.abs_diff(index) <= radius);
+        queue.cancelled.extend(dropped.iter().copied());
+        dropped
+    }
+
+    pub fn cancel_everything(&self) -> Vec<RequestId> {
+        let (lock, _) = &*self.shared;
+        let mut queue = lock.lock().unwrap();
+        let dropped: Vec<RequestId> = queue.pending.iter().map(|r| r.id).collect();
+        queue.pending.clear();
+        queue.cancelled.extend(dropped.iter().copied());
+        dropped
     }
 
     pub fn request(&self, path: PathBuf, index: usize, target: (u32, u32)) -> RequestId {
@@ -105,7 +135,11 @@ impl Drop for Loader {
     }
 }
 
-fn worker_loop(shared: Arc<(Mutex<Queue>, Condvar)>, tx: crossbeam_channel::Sender<LoadResult>) {
+fn worker_loop(
+    shared: Arc<(Mutex<Queue>, Condvar)>,
+    current: Arc<AtomicUsize>,
+    tx: crossbeam_channel::Sender<LoadResult>,
+) {
     loop {
         let request = {
             let (lock, cvar) = &*shared;
@@ -114,7 +148,7 @@ fn worker_loop(shared: Arc<(Mutex<Queue>, Condvar)>, tx: crossbeam_channel::Send
                 if queue.shutdown {
                     return;
                 }
-                if let Some(request) = take_next(&mut queue) {
+                if let Some(request) = take_next(&mut queue, current.load(Ordering::Relaxed)) {
                     break request;
                 }
                 queue = cvar.wait(queue).unwrap();
@@ -140,23 +174,34 @@ fn worker_loop(shared: Arc<(Mutex<Queue>, Condvar)>, tx: crossbeam_channel::Send
     }
 }
 
-fn take_next(queue: &mut Queue) -> Option<LoadRequest> {
-    while let Some(request) = queue.pending.pop() {
+fn take_next(queue: &mut Queue, current: usize) -> Option<LoadRequest> {
+    loop {
+        let best = queue
+            .pending
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, r)| (r.index.abs_diff(current), std::cmp::Reverse(r.id.0)))
+            .map(|(i, _)| i)?;
+        let request = queue.pending.remove(best);
         if !queue.cancelled.remove(&request.id) {
             return Some(request);
         }
     }
-    None
 }
 
 fn load(request: &LoadRequest) -> Result<super::CachedImage, DecodeError> {
     let bytes = std::fs::read(&request.path)?;
-    let output = decode::decode(&DecodeRequest {
-        path: &request.path,
-        bytes: &bytes,
-        target_width: request.target_width,
-        target_height: request.target_height,
-    })?;
+    let output = crate::panic_report::suppress_during(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            decode::decode(&DecodeRequest {
+                path: &request.path,
+                bytes: &bytes,
+                target_width: request.target_width,
+                target_height: request.target_height,
+            })
+        }))
+    })
+    .map_err(|_| DecodeError::Decode("decoder panicked on this file".to_owned()))??;
     Ok(super::CachedImage {
         path: request.path.clone(),
         bytes: measure(&output),

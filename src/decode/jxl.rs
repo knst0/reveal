@@ -23,7 +23,8 @@ fn looks_like_jxl(bytes: &[u8]) -> bool {
 fn to_rgba8(samples: &[f32], channels: usize, width: u32, height: u32) -> Vec<u8> {
     let px = (width as usize) * (height as usize);
     let mut out = vec![0u8; px * 4];
-    for i in 0..px {
+    let available = if channels == 0 { 0 } else { samples.len() / channels };
+    for i in 0..px.min(available) {
         let src = &samples[i * channels..];
         let (r, g, b, a) = match channels {
             1 => (src[0], src[0], src[0], 1.0),
@@ -52,8 +53,6 @@ impl Decoder for JxlDecoder {
         let image =
             JxlImage::builder().read(req.bytes).map_err(|e| DecodeError::Decode(e.to_string()))?;
 
-        let width = image.width();
-        let height = image.height();
         let seconds_per_tick = image
             .image_header()
             .metadata
@@ -68,10 +67,11 @@ impl Decoder for JxlDecoder {
             let render =
                 image.render_frame(index).map_err(|e| DecodeError::Decode(e.to_string()))?;
             let fb = render.image_all_channels();
+            let (fw, fh) = (fb.width() as u32, fb.height() as u32);
             let image = DecodedImage {
-                width,
-                height,
-                rgba: to_rgba8(fb.buf(), fb.channels(), width, height),
+                width: fw,
+                height: fh,
+                rgba: to_rgba8(fb.buf(), fb.channels(), fw, fh),
             };
             let delay = seconds_per_tick
                 .map(|spt| Duration::from_secs_f64(spt * render.duration() as f64))

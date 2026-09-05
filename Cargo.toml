@@ -62,6 +62,7 @@ lexical-sort = "0.3"
 log = "0.4"
 open = "5"
 rand = "0.10"
+rav1d = { version = "1.1.0", default-features = false, features = ["bitdepth_8", "bitdepth_16"] }
 rawler = { version = "0.8", optional = true }
 resvg = "0.48"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "common-controls-v6"] }
@@ -71,15 +72,15 @@ serde_json = "1"
 thiserror = "2"
 trash = "5"
 usvg = "0.48"
-zenavif = "0.1.6"
-zenpixels = "0.2.16"
+zenavif-parse = "0.6.2"
 
 [build-dependencies]
 winres = "0.1.12"
 
 [dev-dependencies]
 criterion = "0.8"
-zenavif = { version = "0.1.6", features = ["encode"] }
+ravif = { version = "0.13.0", default-features = false, features = ["threading"] }
+rgb = "0.8.53"
 zune-core = "0.5"
 zune-jpegxl = "0.5.2"
 
@@ -87,7 +88,7 @@ zune-jpegxl = "0.5.2"
 opt-level = 3
 lto = "thin"
 codegen-units = 4
-panic = "abort"
+panic = "unwind"
 strip = "symbols"
 incremental = false
 

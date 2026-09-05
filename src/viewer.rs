@@ -137,8 +137,10 @@ impl Viewer {
     }
 
     pub fn open(&mut self, path: &Path) -> std::io::Result<()> {
+        self.cache.cancel_all_inflight();
         self.directory = Directory::open_at(path)?;
         self.cache.sync_to_directory(&self.directory);
+        self.cache.set_current_index(self.directory.current_index());
         let target = if path.is_dir() {
             self.directory.current().map(Path::to_path_buf)
         } else {
@@ -296,6 +298,8 @@ impl Viewer {
 
     fn show(&mut self, path: &Path) {
         let index = self.directory.current_index();
+        self.cache.set_current_index(index);
+        self.cache.cancel_outside_window(index);
         if self.prepared.contains_key(path) || self.cache.get(path).is_some() {
             self.pending = None;
             self.present(path);

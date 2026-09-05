@@ -157,3 +157,49 @@ fn first_image_is_ready_before_the_directory_is_scanned() {
     );
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn the_nearest_request_is_decoded_before_its_farther_neighbours() {
+    let dir = temp_dir("priority");
+    let mut paths = Vec::new();
+    for n in 0..7 {
+        let p = dir.join(format!("{n}.png"));
+        write_png(&p, 8);
+        paths.push(p);
+    }
+
+    let loader = Loader::new(1);
+    loader.set_current_index(3);
+    for (index, path) in paths.iter().enumerate() {
+        if index != 3 {
+            loader.request(path.clone(), index, (16, 16));
+        }
+    }
+    loader.request(paths[3].clone(), 3, (16, 16));
+
+    let first = loader.recv().expect("a result");
+    assert_eq!(first.index, 3, "the current image must be decoded first");
+
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn requests_outside_the_prefetch_window_are_cancelled() {
+    let dir = temp_dir("window");
+    for n in 0..40 {
+        write_png(&dir.join(format!("{n:02}.png")), 8);
+    }
+
+    let mut cache = ImageCache::new(64 * 1024 * 1024, 1);
+    cache.set_target_size(16, 16);
+    for n in 0..40 {
+        cache.request(&dir.join(format!("{n:02}.png")), n);
+    }
+    cache.cancel_outside_window(0);
+
+    let d = Directory::open_at(&dir.join("00.png")).unwrap();
+    cache.sync_to_directory(&d);
+    assert!(cache.inflight_len() <= 8, "far requests should be dropped");
+
+    fs::remove_dir_all(&dir).unwrap();
+}

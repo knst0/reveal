@@ -81,6 +81,25 @@ impl ImageCache {
         }
     }
 
+    pub fn inflight_len(&self) -> usize {
+        self.inflight.len()
+    }
+
+    pub fn set_current_index(&mut self, index: usize) {
+        self.loader.set_current_index(index);
+    }
+
+    pub fn cancel_outside_window(&mut self, index: usize) {
+        let radius = PREFETCH_RADIUS.max(0) as usize;
+        let dropped = self.loader.cancel_far_from(index, radius);
+        self.inflight.retain(|(_, id)| !dropped.contains(id));
+    }
+
+    pub fn cancel_all_inflight(&mut self) {
+        self.loader.cancel_everything();
+        self.inflight.clear();
+    }
+
     pub fn cancel_far_from(&mut self, keep: &[PathBuf]) {
         let keep_ids: Vec<RequestId> =
             self.inflight.iter().filter(|(p, _)| keep.contains(p)).map(|(_, id)| *id).collect();
