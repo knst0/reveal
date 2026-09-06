@@ -11,8 +11,26 @@ use crate::directory::{Directory, Navigation};
 use crate::playback::{Playback, PlaybackState};
 use crate::render::{
     FitMode, Resample, ViewTransform, fit_factor_to_budget, into_render_image_still,
-    magnify_factor, magnify_nearest_crop, oriented_size, prepare_display, to_render_image,
+    magnify_factor, magnify_nearest_crop, oriented, oriented_size, prepare_display,
+    to_render_image,
 };
+
+fn scale_crop_to_base(
+    crop: (u32, u32, u32, u32),
+    intrinsic: (f32, f32),
+    base: (u32, u32),
+) -> (u32, u32, u32, u32) {
+    if intrinsic.0 <= 0.0 || intrinsic.1 <= 0.0 || base.0 == 0 || base.1 == 0 {
+        return crop;
+    }
+    let sx = base.0 as f32 / intrinsic.0;
+    let sy = base.1 as f32 / intrinsic.1;
+    let x = ((crop.0 as f32 * sx).floor() as u32).min(base.0.saturating_sub(1));
+    let y = ((crop.1 as f32 * sy).floor() as u32).min(base.1.saturating_sub(1));
+    let w = ((crop.2 as f32 * sx).ceil() as u32).max(1).min(base.0 - x);
+    let h = ((crop.3 as f32 * sy).ceil() as u32).max(1).min(base.1 - y);
+    (x, y, w, h)
+}
 
 pub struct Viewer {
     pub directory: Directory,
@@ -117,15 +135,18 @@ impl Viewer {
             current.magnified = None;
             return;
         };
-        let factor = fit_factor_to_budget(crop, factor);
-        if factor <= 1 {
+        let src_crop = scale_crop_to_base(crop, current.intrinsic, (base.width, base.height));
+        let base_scale = (base.width as f32 / current.intrinsic.0.max(1.0)).max(1.0);
+        let factor = ((factor as f32 / base_scale).ceil() as u32).max(1);
+        let factor = fit_factor_to_budget(src_crop, factor);
+        if factor <= 1 && base_scale <= 1.0 {
             current.magnified = None;
             return;
         }
         if current.magnified.as_ref().is_some_and(|m| m.factor == factor && m.crop == crop) {
             return;
         }
-        let enlarged = magnify_nearest_crop(base, crop, factor);
+        let enlarged = magnify_nearest_crop(base, src_crop, factor);
         if enlarged.width == 0 || enlarged.height == 0 {
             current.magnified = None;
             return;
@@ -311,29 +332,33 @@ impl Viewer {
         scale_factor: f32,
         resample: Resample,
     ) -> Prepared {
-        let orientation = output.orientation;
-        let decoded = &output.decoded;
         let dpr = scale_factor.max(1.0);
         let physical = (viewport.0 * dpr, viewport.1 * dpr);
 
-        let (render, intrinsic, source, base) = match decoded {
+        let (render, intrinsic, source, base) = match &output.decoded {
             Decoded::Still(img) => {
                 let display = match output.display.as_ref() {
-                    Some(d) if d.resample == resample && d.fits(img, orientation, physical) => {
+                    Some(d)
+                        if d.resample == resample && d.fits(img, output.orientation, physical) =>
+                    {
                         d.clone()
                     }
-                    _ => Arc::new(prepare_display(img, orientation, physical, resample)),
+                    _ => Arc::new(prepare_display(img, output.orientation, physical, resample)),
                 };
                 let intrinsic = (display.width as f32 / dpr, display.height as f32 / dpr);
-                let base = if resample == Resample::Nearest { Some(display.base()) } else { None };
+                let base = if resample == Resample::Nearest {
+                    Some(oriented(img, output.orientation).into_owned())
+                } else {
+                    None
+                };
                 (display.render.clone(), intrinsic, display.source, base)
             }
             Decoded::Animation(frames) => match frames.first() {
                 Some(f) => {
-                    let size = oriented_size((f.image.width, f.image.height), orientation);
-                    (to_render_image(decoded), (size.0 as f32, size.1 as f32), size, None)
+                    let size = oriented_size((f.image.width, f.image.height), output.orientation);
+                    (to_render_image(&output.decoded), (size.0 as f32, size.1 as f32), size, None)
                 }
-                None => (to_render_image(decoded), (0.0, 0.0), (0, 0), None),
+                None => (to_render_image(&output.decoded), (0.0, 0.0), (0, 0), None),
             },
         };
 
