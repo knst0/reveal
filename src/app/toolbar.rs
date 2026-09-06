@@ -46,7 +46,7 @@ impl RevealApp {
                     playing,
                 )
             }))
-            .child(div().flex_grow())
+            .child(div().flex_grow(1.))
             .child(
                 ui::tool_button("tb-copy", p, false)
                     .child("Copy")

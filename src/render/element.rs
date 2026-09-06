@@ -105,9 +105,14 @@ impl Element for ImageElement {
         let Some(image) = self.image.clone() else {
             return;
         };
-        if let Err(e) =
-            window.paint_image(prepaint.bounds, Corners::default(), image, self.frame_index, false)
-        {
+        if let Err(e) = window.paint_image(
+            prepaint.bounds,
+            prepaint.bounds,
+            Corners::default(),
+            image,
+            self.frame_index,
+            false,
+        ) {
             log::error!("paint_image failed: {e}");
         }
     }

@@ -194,7 +194,7 @@ impl MenuItem {
             .rounded(px(4.))
             .text_color(text)
             .when(!self.disabled, |s| s.hover(|s| s.bg(color(p.element_hover))))
-            .child(div().flex_grow().child(self.label))
+            .child(div().flex_grow(1.).child(self.label))
             .children(
                 self.keybinding.map(|keys| {
                     div().text_color(color(p.text_muted)).text_size(px(11.)).child(keys)

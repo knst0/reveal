@@ -90,7 +90,7 @@ impl RevealApp {
     }
 
     fn settings_body(&self) -> gpui::Stateful<gpui::Div> {
-        div().id("settings-body").flex_grow().flex().flex_col().p_3().gap_3().overflow_y_scroll()
+        div().id("settings-body").flex_grow(1.).flex().flex_col().p_3().gap_3().overflow_y_scroll()
     }
 
     fn render_general_tab(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
@@ -119,7 +119,7 @@ impl RevealApp {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(div().flex_grow().child("Release channel"))
+                    .child(div().flex_grow(1.).child("Release channel"))
                     .children([Channel::Stable, Channel::Beta].into_iter().map(|option| {
                         ui::chip(
                             match option {
@@ -146,7 +146,7 @@ impl RevealApp {
                     .gap_3()
                     .child(
                         div()
-                            .flex_grow()
+                            .flex_grow(1.)
                             .flex()
                             .flex_col()
                             .child(div().child("Default image viewer"))
@@ -296,7 +296,7 @@ impl RevealApp {
                         .flex()
                         .items_center()
                         .gap_2()
-                        .child(div().flex_grow().child(action_label(action)))
+                        .child(div().flex_grow(1.).child(action_label(action)))
                         .child(div().flex().items_center().gap_1().flex_wrap().children(chips))
                 })),
         )
@@ -325,7 +325,7 @@ impl RevealApp {
                     cx.notify();
                 }),
             ))
-            .child(div().flex_grow())
+            .child(div().flex_grow(1.))
             .child(ui::toast_button("settings-cancel", p, "Cancel", false).on_click(cx.listener(
                 |this, _e, _w, cx| {
                     this.close_settings();
@@ -363,7 +363,7 @@ fn toggle_row(
         .when(!enabled, |s| s.opacity(0.5))
         .child(
             div()
-                .flex_grow()
+                .flex_grow(1.)
                 .flex()
                 .flex_col()
                 .child(div().child(field.label()))
