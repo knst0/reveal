@@ -1,5 +1,11 @@
 # reveal
 
+## 0.3.1
+
+### Patch Changes
+
+- 1fa2283: Switch gpui to the zed v1.18.0 git dependency and migrate to its updated APIs (`Application::with_platform`, `paint_image` bounds, `flex_grow`, `Window::focus`, executor timers).
+
 ## 0.3.0
 
 ### Minor Changes
