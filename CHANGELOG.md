@@ -1,20 +1,5 @@
 # reveal
 
-## 0.4.0
-
-### Minor Changes
-
-- 7f5df90: Ship native installers and packages: `reveal-setup.exe` for Windows, a macOS
-  universal `.app` and `.dmg`, a single Homebrew cask that installs the app and
-  puts `reveal` on the PATH, and a Flatpak with a signed repository.
-
-### Patch Changes
-
-- d027edf: Do not let the built-in updater overwrite a binary a package manager owns. A
-  Homebrew bundle, a Windows installer and a Flatpak now report the command that
-  upgrades them instead of replacing themselves in place, which on macOS would
-  have broken the app's signature. The Flatpak also builds without the updater.
-
 ## 0.3.2
 
 ### Patch Changes
