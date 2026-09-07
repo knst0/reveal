@@ -159,6 +159,11 @@ impl RevealApp {
                 cx.background_executor().timer(interval).await;
                 let alive = this
                     .update(cx, |this, cx| {
+                        let requested = reveal::drop::take_requested();
+                        if !requested.is_empty() {
+                            this.open_dropped(&requested);
+                            cx.notify();
+                        }
                         if this.viewer.tick(Instant::now()) {
                             cx.notify();
                         }
