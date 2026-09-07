@@ -146,6 +146,19 @@ impl Directory {
     }
 }
 
+pub fn same_file(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    if a.file_name() != b.file_name() {
+        return false;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
 fn index_of(entries: &[PathBuf], path: &Path) -> Option<usize> {
     if let Some(index) = entries.iter().position(|e| e == path) {
         return Some(index);

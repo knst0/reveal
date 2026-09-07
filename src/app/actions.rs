@@ -15,7 +15,7 @@ impl RevealApp {
         cx: &mut Context<Self>,
     ) -> bool {
         if action != Action::ImgDel {
-            self.confirm_delete = false;
+            self.confirm_delete = None;
         }
         if !matches!(action, Action::Escape) {
             self.context_menu = None;
@@ -43,11 +43,12 @@ impl RevealApp {
             Action::ImgCopy => self.copy_current(),
             Action::ImgPaste => self.paste_image(),
             Action::ImgDel => {
-                if self.confirm_delete {
-                    self.confirm_delete = false;
+                if self.delete_confirmed() {
+                    self.confirm_delete = None;
                     self.viewer.delete_current();
                 } else {
-                    self.confirm_delete = true;
+                    self.confirm_delete =
+                        self.viewer.current_path().map(std::path::Path::to_path_buf);
                 }
             }
             Action::ToggleAntialias => self.viewer.toggle_antialias(),
@@ -101,7 +102,7 @@ impl RevealApp {
 
     pub fn copy_current(&mut self) {
         if let Some(output) = self.viewer.current_output()
-            && let Err(e) = reveal::actions::copy_to_clipboard(&output.decoded)
+            && let Err(e) = reveal::actions::copy_to_clipboard(&output.decoded, output.orientation)
         {
             log::error!("copy failed: {e}");
         }
@@ -168,8 +169,15 @@ impl RevealApp {
         self.bindings.keys_for(action).first().map(|b| super::labels::format_binding(b))
     }
 
+    pub fn delete_confirmed(&self) -> bool {
+        match (self.confirm_delete.as_deref(), self.viewer.current_path()) {
+            (Some(pending), Some(current)) => pending == current,
+            _ => false,
+        }
+    }
+
     pub fn left_status(&self) -> String {
-        if self.confirm_delete {
+        if self.delete_confirmed() {
             return "Delete to trash? Press Delete again to confirm, Esc to cancel".to_owned();
         }
         if let Some(status) = self.viewer.status() {

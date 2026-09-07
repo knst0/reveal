@@ -15,3 +15,7 @@ pub fn resolve(paths: &[PathBuf]) -> Option<PathBuf> {
         Some(path.clone())
     }
 }
+
+pub fn target(paths: &[PathBuf]) -> Option<PathBuf> {
+    paths.iter().find(|p| is_droppable(p)).cloned()
+}

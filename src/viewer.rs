@@ -156,8 +156,41 @@ impl Viewer {
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
+        let changed = (self.viewport.0 - width).abs() >= f32::EPSILON
+            || (self.viewport.1 - height).abs() >= f32::EPSILON;
         self.viewport = (width, height);
         self.sync_target_size();
+        if changed {
+            self.reprepare_current();
+        }
+    }
+
+    fn reprepare_current(&mut self) {
+        self.prepared.clear();
+        if let Some(current) = self.current.as_mut() {
+            current.magnified = None;
+        }
+        let Some((path, output)) =
+            self.current.as_ref().map(|c| (c.path.clone(), c.output.clone()))
+        else {
+            return;
+        };
+        let offset = self.transform.offset;
+        let zoom = self.transform.zoom;
+        let fit = self.transform.fit;
+        let previous = self.current_intrinsic();
+        let prepared =
+            Self::prepare(&path, output, self.viewport, self.scale_factor, self.resample);
+        self.current = Some(prepared);
+        self.apply_current_fit();
+        if fit == FitMode::Free {
+            let intrinsic = self.current_intrinsic();
+            let ratio =
+                if previous.0 > 0.0 && intrinsic.0 > 0.0 { intrinsic.0 / previous.0 } else { 1.0 };
+            self.transform.fit = FitMode::Free;
+            self.transform.zoom = zoom / ratio;
+            self.transform.offset = offset;
+        }
     }
 
     fn sync_target_size(&mut self) {
@@ -174,12 +207,7 @@ impl Viewer {
         }
         self.scale_factor = scale_factor;
         self.sync_target_size();
-        self.prepared.clear();
-        if let Some(path) = self.current_path().map(Path::to_path_buf) {
-            let keep = self.transform;
-            self.present(&path);
-            self.transform = keep;
-        }
+        self.reprepare_current();
     }
 
     pub fn current_source_size(&self) -> (u32, u32) {
@@ -214,6 +242,19 @@ impl Viewer {
         self.adopt_scan(true);
     }
 
+    fn realign_pending(&mut self, scanned: &Directory) -> Option<PathBuf> {
+        let pending = self.pending.as_deref()?;
+        let scanned_path = scanned.current()?;
+        if pending == scanned_path || !crate::directory::same_file(pending, scanned_path) {
+            return None;
+        }
+        let realigned = scanned_path.to_path_buf();
+        if let Some(stale) = self.pending.take() {
+            self.cache.forget(&stale);
+        }
+        Some(realigned)
+    }
+
     fn adopt_scan(&mut self, blocking: bool) -> bool {
         let Some(scan) = self.scan.as_mut() else {
             return false;
@@ -223,9 +264,18 @@ impl Viewer {
             return false;
         };
         self.scan = None;
-        let Ok(mut scanned) = result else {
-            return false;
+        let mut scanned = match result {
+            Ok(scanned) => scanned,
+            Err(e) => {
+                if self.current.is_none() {
+                    self.status = Some(format!("failed to read folder: {e}"));
+                }
+                return true;
+            }
         };
+        if scanned.is_empty() && self.current.is_none() {
+            self.status = Some(format!("no supported images in {}", scanned.dir().display()));
+        }
         let anchor = self
             .current_path()
             .or(self.pending.as_deref())
@@ -234,6 +284,7 @@ impl Viewer {
         if let Some(anchor) = anchor.as_deref() {
             scanned.jump_to(anchor);
         }
+        let realigned = self.realign_pending(&scanned);
         self.directory = scanned;
         self.cache.sync_to_directory(&self.directory);
         let index = self.directory.current_index();
@@ -241,7 +292,11 @@ impl Viewer {
         let mut redraw = false;
         match anchor {
             Some(_) => {
-                if self.resolve_pending() {
+                if let Some(path) = realigned {
+                    self.pending = None;
+                    self.show(&path);
+                    redraw = true;
+                } else if self.resolve_pending() {
                     redraw = true;
                 }
             }
@@ -527,7 +582,13 @@ impl Viewer {
         if current.intrinsic.0 <= 0.0 || current.source.0 == 0 {
             return 1.0;
         }
-        current.source.0 as f32 / current.intrinsic.0
+        let dpr = self.scale_factor.max(1.0);
+        current.source.0 as f32 / (current.intrinsic.0 * dpr)
+    }
+
+    pub fn source_zoom(&self) -> f32 {
+        let original = self.original_zoom();
+        if original <= 0.0 { self.transform.zoom } else { self.transform.zoom / original }
     }
 
     pub fn set_fit(&mut self, fit: FitMode) {

@@ -36,6 +36,12 @@ fn open_at(files: &[PathBuf]) -> Viewer {
     let mut viewer = Viewer::new();
     viewer.set_viewport(VIEWPORT.0, VIEWPORT.1);
     viewer.open(&files[0]).unwrap();
+    viewer.wait_for_scan();
+    assert_eq!(
+        viewer.directory.len(),
+        files.len(),
+        "the scan must be indexed before navigation is measured"
+    );
     viewer
 }
 

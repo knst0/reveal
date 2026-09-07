@@ -63,7 +63,7 @@ fn loader_decodes_off_the_calling_thread() {
 
     assert_eq!(result.path, path);
     let image = result.outcome.expect("decoded");
-    assert_eq!(image.bytes, 32 * 32 * 4);
+    assert_eq!(image.bytes, 32 * 32 * 4 * 2, "decoded pixels plus the display copy");
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -118,7 +118,7 @@ fn block_on_returns_the_requested_image() {
     let mut cache = ImageCache::new(64 * 1024 * 1024, 2);
     cache.set_target_size(50, 50);
     let image = cache.block_on(&path, 0).expect("loaded");
-    assert_eq!(image.bytes, 16 * 16 * 4);
+    assert_eq!(image.bytes, 16 * 16 * 4 * 2, "decoded pixels plus the display copy");
     fs::remove_dir_all(&dir).unwrap();
 }
 
