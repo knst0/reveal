@@ -14,7 +14,9 @@ use rav1d::src::lib::{
 };
 use zenavif_parse::AvifParser;
 
-use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame, extension_of};
+use super::{
+    DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame, Orientation, extension_of,
+};
 
 pub struct AvifDecoder;
 
@@ -45,6 +47,7 @@ struct YuvPicture {
     monochrome: bool,
     full_range: bool,
     bt709: bool,
+    identity: bool,
 }
 
 struct Av1Decoder {
@@ -68,6 +71,8 @@ impl Av1Decoder {
             settings.assume_init()
         };
         let mut settings = settings;
+        settings.n_threads = 1;
+        settings.max_frame_delay = 1;
         let mut ctx: Option<Dav1dContext> = None;
         let res = unsafe { dav1d_open(NonNull::new(&mut ctx), NonNull::new(&mut settings)) };
         if res.0 != 0 {
@@ -251,20 +256,51 @@ fn copy_picture(pic: &Dav1dPicture) -> Result<YuvPicture, DecodeError> {
         }
     }
 
-    let (mut full_range, mut bt709) = (false, false);
+    let (mut full_range, mut bt709, mut identity) = (false, false, false);
     if let Some(seq) = pic.seq_hdr {
         let seq = unsafe { seq.as_ref() };
         full_range = seq.color_range != 0;
         bt709 = seq.mtrx == DAV1D_MC_BT709;
         if seq.mtrx == DAV1D_MC_IDENTITY {
             full_range = true;
+            identity = !monochrome;
         }
     }
 
-    Ok(YuvPicture { width, height, planes, monochrome, full_range, bt709 })
+    Ok(YuvPicture { width, height, planes, monochrome, full_range, bt709, identity })
+}
+
+fn sample_alpha(alpha: Option<&Plane>, x: usize, y: usize, w: usize, h: usize) -> u8 {
+    alpha
+        .map(|p| {
+            let ax = (x * p.width / w).min(p.width.saturating_sub(1));
+            let ay = (y * p.height / h).min(p.height.saturating_sub(1));
+            p.data[ay * p.width + ax]
+        })
+        .unwrap_or(255)
+}
+
+fn gbr_to_rgba(pic: &YuvPicture, alpha: Option<&Plane>) -> DecodedImage {
+    let (w, h) = (pic.width, pic.height);
+    let mut rgba = Vec::with_capacity(w * h * 4);
+    let (g, b, r) = (&pic.planes[0], &pic.planes[1], &pic.planes[2]);
+    for y in 0..h {
+        for x in 0..w {
+            let at = |p: &Plane| {
+                let px = (x * p.width / w).min(p.width.saturating_sub(1));
+                let py = (y * p.height / h).min(p.height.saturating_sub(1));
+                p.data[py * p.width + px]
+            };
+            rgba.extend_from_slice(&[at(r), at(g), at(b), sample_alpha(alpha, x, y, w, h)]);
+        }
+    }
+    DecodedImage { rgba, width: w as u32, height: h as u32 }
 }
 
 fn yuv_to_rgba(pic: &YuvPicture, alpha: Option<&Plane>) -> DecodedImage {
+    if pic.identity && pic.planes.len() >= 3 {
+        return gbr_to_rgba(pic, alpha);
+    }
     let (w, h) = (pic.width, pic.height);
     let mut rgba = Vec::with_capacity(w * h * 4);
 
@@ -297,13 +333,7 @@ fn yuv_to_rgba(pic: &YuvPicture, alpha: Option<&Plane>) -> DecodedImage {
             let b = yn + 2.0 * (1.0 - kb) * u;
             let g = yn - (2.0 * (1.0 - kr) * kr / kg) * v - (2.0 * (1.0 - kb) * kb / kg) * u;
 
-            let a = alpha
-                .map(|p| {
-                    let ax = (x * p.width / w).min(p.width.saturating_sub(1));
-                    let ay = (y * p.height / h).min(p.height.saturating_sub(1));
-                    p.data[ay * p.width + ax]
-                })
-                .unwrap_or(255);
+            let a = sample_alpha(alpha, x, y, w, h);
 
             rgba.extend_from_slice(&[clamp8(r), clamp8(g), clamp8(b), a]);
         }
@@ -335,8 +365,15 @@ fn decode_one(payload: &[u8]) -> Result<YuvPicture, DecodeError> {
 }
 
 fn decode_alpha(payload: &[u8]) -> Option<Plane> {
-    let pic = decode_one(payload).ok()?;
-    let mut pic = pic;
+    alpha_plane(decode_one(payload).ok()?)
+}
+
+fn decode_alpha_with(decoder: &mut Av1Decoder, payload: &[u8]) -> Option<Plane> {
+    let mut pics = decoder.decode_all(payload).ok()?;
+    alpha_plane(pics.swap_remove(0))
+}
+
+fn alpha_plane(mut pic: YuvPicture) -> Option<Plane> {
     let mut plane = pic.planes.swap_remove(0);
     if !pic.full_range {
         for v in &mut plane.data {
@@ -359,6 +396,44 @@ fn image_from(
         unpremultiply(&mut image);
     }
     Ok(image)
+}
+
+struct SequenceDecoder {
+    colour: Av1Decoder,
+    alpha: Option<Av1Decoder>,
+}
+
+impl SequenceDecoder {
+    fn new() -> Result<Self, DecodeError> {
+        Ok(Self { colour: Av1Decoder::new()?, alpha: None })
+    }
+
+    fn frame(
+        &mut self,
+        payload: &[u8],
+        alpha: Option<&[u8]>,
+        premultiplied: bool,
+    ) -> Result<DecodedImage, DecodeError> {
+        let mut pics = self.colour.decode_all(payload)?;
+        let pic = pics.swap_remove(0);
+
+        let alpha_plane = match alpha {
+            Some(payload) => {
+                if self.alpha.is_none() {
+                    self.alpha = Some(Av1Decoder::new()?);
+                }
+                let decoder = self.alpha.as_mut().expect("alpha decoder was just created");
+                decode_alpha_with(decoder, payload)
+            }
+            None => None,
+        };
+
+        let mut image = yuv_to_rgba(&pic, alpha_plane.as_ref());
+        if premultiplied && alpha_plane.is_some() {
+            unpremultiply(&mut image);
+        }
+        Ok(image)
+    }
 }
 
 fn assemble_grid(
@@ -430,9 +505,11 @@ impl Decoder for AvifDecoder {
             && info.frame_count > 1
         {
             let mut frames = Vec::with_capacity(info.frame_count);
+            let mut sequence = SequenceDecoder::new()?;
             for index in 0..info.frame_count {
                 let frame = parser.frame(index).map_err(|e| DecodeError::Decode(e.to_string()))?;
-                let image = image_from(&frame.data, frame.alpha_data.as_deref(), premultiplied)?;
+                let image =
+                    sequence.frame(&frame.data, frame.alpha_data.as_deref(), premultiplied)?;
                 let ms = u64::from(frame.duration_ms.max(1));
                 frames.push(Frame { image, delay: Duration::from_millis(ms) });
             }
@@ -456,6 +533,39 @@ impl Decoder for AvifDecoder {
         let image = image_from(&primary, alpha.as_deref(), premultiplied)?;
         Ok(Decoded::Still(image))
     }
+
+    fn orientation(&self, req: &DecodeRequest<'_>) -> Option<Orientation> {
+        let parser = AvifParser::from_bytes(req.bytes).ok()?;
+        let angle = parser.rotation().map_or(0, |r| r.angle);
+        let mirror = parser.mirror().map(|m| m.axis);
+        container_orientation(angle, mirror)
+    }
+}
+
+fn container_orientation(angle: u16, mirror: Option<u8>) -> Option<Orientation> {
+    let rotation = match angle {
+        0 => Orientation::Normal,
+        90 => Orientation::Rotate90,
+        180 => Orientation::Rotate180,
+        270 => Orientation::Rotate270,
+        _ => return None,
+    };
+    let Some(axis) = mirror else {
+        return (rotation != Orientation::Normal).then_some(rotation);
+    };
+    // `imir` flips after `irot`; axis 0 mirrors left-to-right, axis 1 top-to-bottom.
+    let combined = match (rotation, axis) {
+        (Orientation::Normal, 0) => Orientation::FlipH,
+        (Orientation::Normal, _) => Orientation::FlipV,
+        (Orientation::Rotate90, 0) => Orientation::Transpose,
+        (Orientation::Rotate90, _) => Orientation::Transverse,
+        (Orientation::Rotate180, 0) => Orientation::FlipV,
+        (Orientation::Rotate180, _) => Orientation::FlipH,
+        (Orientation::Rotate270, 0) => Orientation::Transverse,
+        (Orientation::Rotate270, _) => Orientation::Transpose,
+        _ => return None,
+    };
+    Some(combined)
 }
 
 #[cfg(test)]
