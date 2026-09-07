@@ -1,0 +1,166 @@
+name: Flatpak
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      ref:
+        required: true
+        type: string
+      publish:
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build ${{ matrix.variant.arch }}
+    runs-on: ${{ matrix.variant.runner }}
+    permissions:
+      contents: read
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Generate cargo sources
+        run: |
+          python3 -m pip install --break-system-packages aiohttp toml
+          ./flatpak/generate-sources.sh
+
+      - name: Build bundle
+        uses: flathub-infra/flatpak-github-actions/flatpak-builder@23796715b3dfa4c86ddf50cf29c3cc8b3c82dd8e # v6.5
+        with:
+          manifest-path: flatpak/io.github.knst0.reveal.yaml
+          bundle: reveal-${{ inputs.version }}-${{ matrix.variant.arch }}.flatpak
+          arch: ${{ matrix.variant.arch }}
+          upload-artifact: true
+          artifact-name: flatpak-${{ matrix.variant.arch }}
+
+  repo:
+    name: Publish flatpak repo
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: flatpak-*
+          path: bundles
+          merge-multiple: true
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak ostree
+
+      - name: Import the signing key
+        id: key
+        env:
+          KEY: ${{ secrets.FLATPAK_GPG_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEY:-}" ]; then
+            echo "::error::FLATPAK_GPG_KEY secret is not set"
+            exit 1
+          fi
+          GNUPGHOME="$(mktemp -d)"
+          export GNUPGHOME
+          echo "$KEY" | gpg --batch --import
+          fingerprint="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')"
+          gpg --batch --yes --export "$fingerprint" > "$GNUPGHOME/pub.gpg"
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch the published repo
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch flatpak-repo \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" site || mkdir site
+          rm -rf site/.git
+
+      - name: Publish the bundles
+        env:
+          FINGERPRINT: ${{ steps.key.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          mkdir -p site/repo/tmp site/repo/refs/remotes
+          test -f site/repo/config || ostree init --repo=site/repo --mode=archive
+          for bundle in bundles/*.flatpak; do
+            flatpak build-import-bundle \
+              --gpg-sign="$FINGERPRINT" \
+              --gpg-homedir="$GNUPGHOME" \
+              site/repo "$bundle"
+          done
+          flatpak build-update-repo \
+            --title=Reveal \
+            --generate-static-deltas \
+            --prune \
+            --prune-depth=3 \
+            --gpg-sign="$FINGERPRINT" \
+            --gpg-homedir="$GNUPGHOME" \
+            site/repo
+          rm -rf site/repo/tmp
+          cp -R flatpak/pages/. site/
+          base64 -w0 "$GNUPGHOME/pub.gpg" > /tmp/gpgkey.b64
+          {
+            echo "[Flatpak Repo]"
+            echo "Title=Reveal"
+            echo "Url=https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}/repo/"
+            echo "Homepage=https://github.com/$GITHUB_REPOSITORY"
+            echo "Description=A fast image viewer"
+            echo "GPGKey=$(cat /tmp/gpgkey.b64)"
+          } > site/reveal.flatpakrepo
+
+      - name: Export bundles for the release
+        run: |
+          set -euo pipefail
+          ./flatpak/export-bundles.sh site/repo "${{ inputs.version }}" dist || true
+          mkdir -p dist
+          cp bundles/*.flatpak dist/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-flatpak
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Push the repo
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd site
+          git init -q -b flatpak-repo
+          git add -A
+          git \
+            -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "chore(flatpak): publish v${{ inputs.version }}"
+          git push --force \
+            "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY" flatpak-repo

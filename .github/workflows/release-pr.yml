@@ -1,0 +1,85 @@
+name: Release PR
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  open:
+    name: Open release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Check for changesets
+        id: check
+        run: |
+          set -euo pipefail
+          if [ -z "$(git ls-files '.changeset/*.md' | grep -v '^.changeset/README.md$' || true)" ]; then
+            echo "::error::no changesets to release"
+            exit 1
+          fi
+          scripts/changeset.sh status
+
+      - name: Apply changesets
+        id: meta
+        run: |
+          set -euo pipefail
+          version=$(scripts/changeset.sh version | tail -n1)
+          scripts/changeset.sh notes > RELEASE_NOTES.md || true
+          # changeset.sh already consumed the changesets; regenerate notes from CHANGELOG head.
+          {
+            echo "version=${version}"
+            echo "tag=v${version}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          awk '
+            /^## / { seen++; if (seen == 1) next }
+            seen == 1 && /^## / { exit }
+            seen == 1 { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          branch: release/v${{ steps.meta.outputs.version }}
+          base: main
+          title: "chore(release): ${{ steps.meta.outputs.tag }}"
+          body-path: RELEASE_NOTES.md
+          commit-message: "chore(release): ${{ steps.meta.outputs.tag }}"
+          delete-branch: true
+          labels: release
+          add-paths: |
+            Cargo.toml
+            Cargo.lock
+            CHANGELOG.md
+            .changeset
+
+      - name: Summary
+        run: |
+          {
+            echo "## Release PR for ${{ steps.meta.outputs.tag }}"
+            echo
+            echo "Merge the PR, then run the **Release** workflow to build and publish."
+            echo
+            cat RELEASE_NOTES.md
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -14,7 +14,9 @@ exclude = [
     "release-staging/*",
     ".github/*",
     ".changeset/*",
+    ".gitattributes",
     "scripts/*",
+    "flatpak/*",
     "*.tar.gz",
     "*.zip",
 ]

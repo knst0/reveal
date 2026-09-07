@@ -49,7 +49,7 @@ fn uti(mime: &str, extension: &str) -> String {
         "image/avif-sequence" => "public.avif".to_owned(),
         "image/svg+xml" => "public.svg-image".to_owned(),
         "image/jxl" => "public.jpeg-xl".to_owned(),
-        _ => format!("org.reveal.{extension}"),
+        _ => format!("io.github.knst0.reveal.{extension}"),
     }
 }
 
@@ -77,7 +77,7 @@ pub fn info_plist(version: &str) -> String {
          <plist version=\"1.0\">\n<dict>\n\
          \t<key>CFBundleName</key>\n\t<string>Reveal</string>\n\
          \t<key>CFBundleDisplayName</key>\n\t<string>Reveal</string>\n\
-         \t<key>CFBundleIdentifier</key>\n\t<string>org.reveal.Reveal</string>\n\
+         \t<key>CFBundleIdentifier</key>\n\t<string>io.github.knst0.reveal</string>\n\
          \t<key>CFBundleExecutable</key>\n\t<string>reveal</string>\n\
          \t<key>CFBundleIconFile</key>\n\t<string>reveal.icns</string>\n\
          \t<key>CFBundlePackageType</key>\n\t<string>APPL</string>\n\
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn desktop_entry_mimes_match_the_format_table() {
-        let desktop = include_str!("../resource/reveal.desktop");
+        let desktop = include_str!("../resource/io.github.knst0.reveal.desktop");
         for mime in mime_list() {
             assert!(desktop.contains(mime), "{mime} missing from reveal.desktop");
         }
