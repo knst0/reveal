@@ -321,6 +321,7 @@ jobs:
           TAG: ${{ needs.prepare.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
+          # shellcheck disable=SC2016 # backticks in the body are Markdown, not command substitution
           {
             cat RELEASE_NOTES.md
             printf '\n---\n\n'
