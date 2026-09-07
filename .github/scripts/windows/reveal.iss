@@ -1,5 +1,5 @@
 ; Inno Setup script for the Reveal Windows installer.
-; Driven by the release workflow, which sets these environment variables:
+; The release workflow supplies:
 ;   REVEAL_VERSION  three-part version, e.g. 0.3.2
 ;   REVEAL_EXE      absolute path to the built reveal.exe
 ;   REVEAL_DIST     absolute path to the directory the installer is written to
@@ -22,15 +22,16 @@ DefaultDirName={autopf}\Reveal
 DefaultGroupName=Reveal
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\reveal.exe
-LicenseFile=..\..\LICENSE
+LicenseFile={#SourcePath}\..\..\..\LICENSE
 OutputDir={#DistDir}
-OutputBaseFilename=reveal-{#Version}-x86_64-pc-windows-msvc-setup
+OutputBaseFilename=reveal-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ChangesAssociations=yes
+ChangesEnvironment=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

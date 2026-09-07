@@ -2,7 +2,7 @@ mod manager;
 mod store;
 mod worker;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use manager::ImageCache;
@@ -45,8 +45,4 @@ pub fn measure(output: &DecodeOutput) -> usize {
         Decoded::Still(img) => img.rgba.len(),
         Decoded::Animation(frames) => frames.iter().map(|f| f.image.rgba.len()).sum(),
     }
-}
-
-pub fn is_same_file(a: &Path, b: &Path) -> bool {
-    a == b
 }

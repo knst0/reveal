@@ -5,12 +5,10 @@ on:
     inputs:
       dry-run:
         description: 'Build everything but do not tag or publish'
-        required: false
         type: boolean
         default: false
       draft:
         description: 'Create the GitHub release as a draft'
-        required: false
         type: boolean
         default: false
 
@@ -45,36 +43,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve version
-        id: meta
-        run: |
-          set -euo pipefail
-          if [ -n "$(git ls-files '.changeset/*.md' | grep -v '^.changeset/README.md$' || true)" ]; then
-            echo "::error::unconsumed changesets on main; merge the Release PR first"
-            exit 1
-          fi
-          version=$(sed -n '/^\[package\]/,/^\[/p' Cargo.toml \
-            | sed -n 's/^version = "\(.*\)"/\1/p' | head -n1)
-          tag="v${version}"
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "::error::tag ${tag} already exists on origin"
-            exit 1
-          fi
-          {
-            echo "version=${version}"
-            echo "tag=${tag}"
-            echo "sha=$(git rev-parse HEAD)"
-          } >> "$GITHUB_OUTPUT"
+      - id: meta
+        name: Resolve version
+        run: .github/scripts/version.sh
 
       - name: Release notes
-        run: |
-          set -euo pipefail
-          awk '
-            /^## / { seen++; if (seen == 1) next }
-            seen == 1 && /^## / { exit }
-            seen == 1 { print }
-          ' CHANGELOG.md > RELEASE_NOTES.md
-          cat RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
+        run: .github/scripts/release-notes.sh | tee RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -107,16 +81,15 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
-      - name: Linux linker
-        if: runner.os == 'Linux'
+      - name: Platform build flags
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends mold
-          echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
-
-      - name: macOS deployment target
-        if: runner.os == 'macOS'
-        run: echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends mold
+            echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
+          elif [ "$RUNNER_OS" = macOS ]; then
+            echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
+          fi
 
       - uses: ./.github/actions/setup-rust
         with:
@@ -133,30 +106,16 @@ jobs:
         if: always()
         run: sccache --show-stats
 
-      - name: Package (unix)
-        if: runner.os != 'Windows'
-        run: |
-          set -euo pipefail
-          tar -czf "reveal-${{ matrix.target }}.tar.gz" \
-            -C "target/${{ matrix.target }}/release" reveal
-
-      - name: Package (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "target/${{ matrix.target }}/release/reveal.exe" `
-            -DestinationPath "reveal-${{ matrix.target }}.zip"
+      - name: Package
+        run: .github/scripts/package.sh ${{ matrix.target }}
 
       - name: Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
-        env:
-          REVEAL_VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          choco install innosetup --yes --no-progress
-          $env:REVEAL_EXE = (Resolve-Path "target/${{ matrix.target }}/release/reveal.exe").Path
-          $env:REVEAL_DIST = (Get-Location).Path
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "scripts/windows/reveal.iss"
+        run: >-
+          .github/scripts/windows-installer.ps1
+          -Version ${{ needs.prepare.outputs.version }}
+          -Target ${{ matrix.target }}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -164,7 +123,7 @@ jobs:
           path: |
             reveal-${{ matrix.target }}.tar.gz
             reveal-${{ matrix.target }}.zip
-            reveal-*-setup.exe
+            reveal-setup.exe
           if-no-files-found: error
 
   bundle:
@@ -184,63 +143,8 @@ jobs:
           path: darwin
           merge-multiple: true
 
-      - name: Unpack the per-arch binaries
-        run: |
-          set -euo pipefail
-          mkdir -p arch
-          tar -xzf darwin/reveal-aarch64-apple-darwin.tar.gz -C arch
-          mv arch/reveal arch/reveal-arm64
-          tar -xzf darwin/reveal-x86_64-apple-darwin.tar.gz -C arch
-          mv arch/reveal arch/reveal-x86_64
-
-      - name: Assemble the app bundle
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-          app="Reveal.app/Contents"
-          mkdir -p "$app/MacOS" "$app/Resources"
-
-          lipo -create -output "$app/MacOS/reveal" arch/reveal-arm64 arch/reveal-x86_64
-          chmod +x "$app/MacOS/reveal"
-          lipo -info "$app/MacOS/reveal"
-
-          cp resource/macos/reveal.icns "$app/Resources/reveal.icns"
-          cargo run --quiet --features tools --bin info-plist -- "$VERSION" > "$app/Info.plist"
-          plutil -lint "$app/Info.plist"
-
-          cp LICENSE "$app/Resources/LICENSE"
-
-      - name: Sign the bundle
-        run: |
-          set -euo pipefail
-          codesign --force --sign - --timestamp=none Reveal.app
-          codesign --verify --strict --verbose=2 Reveal.app
-
-      - name: Universal tarball
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-          tar -czf "reveal-${VERSION}-universal-apple-darwin.tar.gz" \
-            -C "Reveal.app/Contents/MacOS" reveal
-
-      - name: Disk image
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-          mkdir -p staging dist
-          cp -R Reveal.app staging/
-          ln -s /Applications staging/Applications
-          megabytes=$(du -ms staging | cut -f1)
-          hdiutil create \
-            -volname Reveal \
-            -srcfolder staging \
-            -size "$((megabytes + 64))m" \
-            -ov -format UDZO \
-            "dist/reveal-${VERSION}-macos.dmg"
-          cp "reveal-${VERSION}-universal-apple-darwin.tar.gz" dist/
+      - name: Assemble Reveal.app and the disk image
+        run: .github/scripts/macos-bundle.sh "${{ needs.prepare.outputs.version }}" darwin dist
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -286,18 +190,13 @@ jobs:
 
       - name: Checksums
         working-directory: dist
-        run: |
-          set -euo pipefail
-          sha256sum -- * > SHA256SUMS
-          cat SHA256SUMS
+        run: sha256sum -- * | tee SHA256SUMS
 
       - name: Dry run summary
         if: inputs.dry-run
         run: |
-          set -euo pipefail
-          echo "Dry run for ${{ needs.prepare.outputs.tag }} at ${{ needs.prepare.outputs.sha }}:"
+          echo "Dry run for ${{ needs.prepare.outputs.tag }} at ${{ needs.prepare.outputs.sha }}"
           ls -l dist
-          echo '--- release notes ---'
           cat RELEASE_NOTES.md
 
       - name: Attest build provenance
@@ -306,26 +205,13 @@ jobs:
         with:
           subject-path: dist/*
 
-      - name: Tag the release
-        if: '!inputs.dry-run'
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ needs.prepare.outputs.tag }}" -m "${{ needs.prepare.outputs.tag }}"
-          git push origin "${{ needs.prepare.outputs.tag }}"
-
-      - name: Create GitHub release
+      - name: Tag and release
         if: '!inputs.dry-run'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh release create "${{ needs.prepare.outputs.tag }}" \
-            --title "${{ needs.prepare.outputs.tag }}" \
-            --notes-file RELEASE_NOTES.md \
-            ${{ inputs.draft && '--draft' || '' }} \
-            dist/*
+          TAG: ${{ needs.prepare.outputs.tag }}
+          DRAFT: ${{ inputs.draft }}
+        run: .github/scripts/github-release.sh
 
   homebrew:
     name: Bump Homebrew cask
@@ -338,7 +224,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.prepare.outputs.sha }}
-          sparse-checkout: scripts/homebrew
+          sparse-checkout: .github/scripts
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -353,39 +239,8 @@ jobs:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
 
-      - name: Render the cask
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-          sha_tarball=$(sha256sum "dist/reveal-${VERSION}-universal-apple-darwin.tar.gz" | cut -d' ' -f1)
-          sha_dmg=$(sha256sum "dist/reveal-${VERSION}-macos.dmg" | cut -d' ' -f1)
-          mkdir -p tap/Casks
-          sed \
-            -e "s/__VERSION__/${VERSION}/" \
-            -e "s/__SHA256__/${sha_tarball}/" \
-            scripts/homebrew/reveal.rb.tmpl > tap/Casks/reveal.rb
-          sed \
-            -e "s/__VERSION__/${VERSION}/" \
-            -e "s/__SHA256_DMG__/${sha_dmg}/" \
-            scripts/homebrew/reveal-app.rb.tmpl > tap/Casks/reveal-app.rb
-          cat tap/Casks/reveal.rb tap/Casks/reveal-app.rb
-
-      - name: Commit and push
-        working-directory: tap
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/reveal.rb Casks/reveal-app.rb
-          if git diff --cached --quiet; then
-            echo "Cask already up to date."
-            exit 0
-          fi
-          git commit -m "reveal ${VERSION}"
-          git push
+      - name: Render and push the cask
+        run: .github/scripts/homebrew-cask.sh "${{ needs.prepare.outputs.version }}" dist tap
 
   crates-io:
     name: Publish to crates.io
@@ -402,22 +257,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - name: Authenticate to crates.io
-        id: auth
+      - id: auth
+        name: Authenticate to crates.io
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
 
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: |
-          if out=$(cargo publish --locked --no-verify 2>&1); then
-            echo "$out"
-          else
-            echo "$out"
-            if echo "$out" | grep -qi "already uploaded\|already exists"; then
-              echo "Version already on crates.io; treating as success."
-              exit 0
-            fi
-            echo "cargo publish failed."
-            exit 1
-          fi
+        run: .github/scripts/crates-publish.sh

@@ -11,23 +11,52 @@ A fast image viewer.
 
 ### Windows
 
+#### Installer
+
+Download and run the [installer](https://github.com/knst0/reveal/releases/latest/download/reveal-setup.exe).
+
+#### Portable
+
+Download the latest [release](https://github.com/knst0/reveal/releases/latest/download/reveal-x86_64-pc-windows-msvc.zip).
+
 ### macOS
 
+Install with [Homebrew](https://brew.sh/):
 
+```shell
+brew install --cask knst0/reveal/reveal
+```
+
+This installs `Reveal.app` and puts the `reveal` command on your PATH.
+
+The binaries are ad-hoc signed. If Gatekeeper blocks the app:
+
+```shell
+xattr -dr com.apple.quarantine /Applications/Reveal.app
+```
 
 ### Linux
+
+#### Flatpak
+
+Add the Reveal repository:
+
+```shell
+flatpak remote-add --if-not-exists reveal https://knst0.github.io/reveal/reveal.flatpakrepo
+flatpak install reveal io.github.knst0.reveal
+```
 
 ### Cargo
 
 Install with [cargo-binstall](https://github.com/cargo-bins/cargo-binstall):
 
-```sh
+```shell
 cargo binstall reveal
 ```
 
 or build from source:
 
-```sh
+```shell
 cargo install reveal
 ```
 

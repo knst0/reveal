@@ -33,8 +33,8 @@ jobs:
             echo "::error::no changesets to release"
             exit 1
           fi
-          scripts/changeset.sh notes > RELEASE_NOTES.md
-          version=$(scripts/changeset.sh version | tail -n1)
+          .github/scripts/changeset.sh notes > RELEASE_NOTES.md
+          version=$(.github/scripts/changeset.sh version | tail -n1)
           {
             echo "version=${version}"
             echo "tag=v${version}"

@@ -190,12 +190,6 @@ impl SettingsState {
         true
     }
 
-    pub fn clear_binding(&mut self, action: Action) {
-        self.bindings.clear_action(action);
-        self.capturing = None;
-        self.dirty = true;
-    }
-
     pub fn remove_binding(&mut self, binding: &Binding) {
         self.bindings.remove_binding(binding);
         self.capturing = None;
@@ -207,10 +201,6 @@ impl SettingsState {
         self.capturing = None;
         self.notice = Some("Shortcuts restored to defaults.".to_owned());
         self.dirty = true;
-    }
-
-    pub fn register_associations(&mut self) {
-        self.notice = Some(association_notice());
     }
 }
 

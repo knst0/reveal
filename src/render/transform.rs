@@ -42,10 +42,6 @@ impl ViewTransform {
         }
     }
 
-    pub fn apply_fit(&mut self, image: (f32, f32), viewport: (f32, f32)) {
-        self.apply_fit_with(image, viewport, 1.0);
-    }
-
     pub fn apply_fit_with(&mut self, image: (f32, f32), viewport: (f32, f32), original_zoom: f32) {
         if self.fit == FitMode::Free {
             return;

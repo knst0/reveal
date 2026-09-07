@@ -78,13 +78,6 @@ impl Theme {
         }
     }
 
-    pub fn bar_background(self) -> u32 {
-        match self {
-            Theme::Dark => 0x1c1c1c,
-            Theme::Light => 0xe2e2e2,
-        }
-    }
-
     pub fn text(self) -> u32 {
         match self {
             Theme::Dark => 0xd0d0d0,

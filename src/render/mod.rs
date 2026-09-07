@@ -21,10 +21,6 @@ pub fn to_bgra(image: &DecodedImage) -> RgbaImage {
         .expect("decoded buffer must match its dimensions")
 }
 
-pub fn to_render_image_still(image: &DecodedImage) -> Arc<RenderImage> {
-    Arc::new(RenderImage::new(vec![Frame::new(to_bgra(image))]))
-}
-
 pub fn into_render_image_still(image: DecodedImage) -> Arc<RenderImage> {
     Arc::new(RenderImage::new(vec![Frame::new(into_bgra(image))]))
 }
