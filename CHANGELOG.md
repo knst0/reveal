@@ -1,5 +1,13 @@
 # reveal
 
+## 0.4.0
+
+### Minor Changes
+
+- 697bd4a: Ship native installers and packages: `reveal-setup.exe` for Windows, a macOS
+  universal `.app` and `.dmg`, a single Homebrew cask that installs the app and
+  puts `reveal` on the PATH, and a Flatpak with a signed repository.
+
 ## 0.3.2
 
 ### Patch Changes
