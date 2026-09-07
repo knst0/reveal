@@ -9,10 +9,27 @@ A fast image viewer.
 
 ## Install
 
+### Windows
+
+### macOS
+
+
+
+### Linux
+
+### Cargo
+
+Install with [cargo-binstall](https://github.com/cargo-bins/cargo-binstall):
+
+```sh
+cargo binstall reveal
+```
+
+or build from source:
+
 ```sh
 cargo install reveal
 ```
-
 
 ## License
 
