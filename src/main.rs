@@ -41,7 +41,12 @@ fn main() {
     let cache = reveal::config::Cache::load();
     let init = AppInit { config, bindings, viewer, cache };
 
-    Application::with_platform(gpui_platform::current_platform(false)).run(move |cx: &mut App| {
+    let application = Application::with_platform(gpui_platform::current_platform(false));
+    application.on_open_urls(|urls| {
+        reveal::drop::request_open(reveal::drop::paths_from_urls(urls));
+    });
+
+    application.run(move |cx: &mut App| {
         let saved = init.cache.window.clone();
         let bounds = Bounds {
             origin: gpui::point(px(saved.x as f32), px(saved.y as f32)),

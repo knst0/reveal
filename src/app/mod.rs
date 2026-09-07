@@ -24,7 +24,7 @@ use reveal::viewer::Viewer;
 use labels::title_for;
 
 pub struct RevealApp {
-    pub confirm_delete: bool,
+    pub confirm_delete: Option<std::path::PathBuf>,
     pub theme: Theme,
     pub bindings: Bindings,
     pub config: Configuration,
@@ -66,7 +66,7 @@ impl RevealApp {
             show_bottom_bar,
             zoom_menu_open: false,
             context_menu: None,
-            confirm_delete: false,
+            confirm_delete: None,
             window_title: String::new(),
             cache,
             config,
@@ -85,7 +85,7 @@ impl RevealApp {
 
     pub fn open_dropped(&mut self, paths: &[std::path::PathBuf]) {
         self.drop_hover = false;
-        let Some(target) = reveal::drop::resolve(paths) else {
+        let Some(target) = reveal::drop::target(paths) else {
             return;
         };
         if let Err(e) = self.viewer.open(&target) {
@@ -159,6 +159,11 @@ impl RevealApp {
                 cx.background_executor().timer(interval).await;
                 let alive = this
                     .update(cx, |this, cx| {
+                        let requested = reveal::drop::take_requested();
+                        if !requested.is_empty() {
+                            this.open_dropped(&requested);
+                            cx.notify();
+                        }
                         if this.viewer.tick(Instant::now()) {
                             cx.notify();
                         }

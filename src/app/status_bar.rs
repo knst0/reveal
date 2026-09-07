@@ -10,8 +10,8 @@ use super::RevealApp;
 
 impl RevealApp {
     pub fn render_status_bar(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
-        let zoom_pct = format!("{:.0}%", self.viewer.transform.zoom * 100.0);
-        let danger = self.confirm_delete;
+        let zoom_pct = format!("{:.0}%", self.viewer.source_zoom() * 100.0);
+        let danger = self.delete_confirmed();
 
         ui::status_bar(p)
             .child(

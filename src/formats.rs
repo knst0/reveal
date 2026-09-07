@@ -16,11 +16,79 @@ pub const FORMATS: &[FormatInfo] = &[
     FormatInfo { extension: "ico", mime: "image/x-icon", description: "Icon" },
     FormatInfo { extension: "tga", mime: "image/x-tga", description: "TGA image" },
     FormatInfo { extension: "pnm", mime: "image/x-portable-anymap", description: "PNM image" },
+    FormatInfo { extension: "pbm", mime: "image/x-portable-bitmap", description: "PBM image" },
+    FormatInfo { extension: "pgm", mime: "image/x-portable-graymap", description: "PGM image" },
+    FormatInfo { extension: "ppm", mime: "image/x-portable-pixmap", description: "PPM image" },
+    FormatInfo {
+        extension: "pam",
+        mime: "image/x-portable-arbitrarymap",
+        description: "PAM image",
+    },
+    FormatInfo { extension: "ff", mime: "image/x-farbfeld", description: "farbfeld image" },
+    FormatInfo { extension: "qoi", mime: "image/qoi", description: "QOI image" },
+    FormatInfo { extension: "exr", mime: "image/x-exr", description: "OpenEXR image" },
     FormatInfo { extension: "hdr", mime: "image/vnd.radiance", description: "Radiance HDR" },
     FormatInfo { extension: "avif", mime: "image/avif", description: "AVIF image" },
     FormatInfo { extension: "avifs", mime: "image/avif-sequence", description: "AVIF sequence" },
     FormatInfo { extension: "svg", mime: "image/svg+xml", description: "SVG image" },
+    FormatInfo { extension: "svgz", mime: "image/svg+xml-compressed", description: "SVG image" },
     FormatInfo { extension: "jxl", mime: "image/jxl", description: "JPEG XL image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "cr2", mime: "image/x-canon-cr2", description: "Canon raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "cr3", mime: "image/x-canon-cr3", description: "Canon raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "crw", mime: "image/x-canon-crw", description: "Canon raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "nef", mime: "image/x-nikon-nef", description: "Nikon raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "nrw", mime: "image/x-nikon-nrw", description: "Nikon raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "arw", mime: "image/x-sony-arw", description: "Sony raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "srf", mime: "image/x-sony-srf", description: "Sony raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "sr2", mime: "image/x-sony-sr2", description: "Sony raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "orf", mime: "image/x-olympus-orf", description: "Olympus raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo {
+        extension: "rw2",
+        mime: "image/x-panasonic-rw2",
+        description: "Panasonic raw image",
+    },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "raf", mime: "image/x-fuji-raf", description: "Fujifilm raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "dng", mime: "image/x-adobe-dng", description: "Adobe DNG image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "pef", mime: "image/x-pentax-pef", description: "Pentax raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "erf", mime: "image/x-epson-erf", description: "Epson raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "kdc", mime: "image/x-kodak-kdc", description: "Kodak raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "dcr", mime: "image/x-kodak-dcr", description: "Kodak raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "mrw", mime: "image/x-minolta-mrw", description: "Minolta raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo {
+        extension: "3fr",
+        mime: "image/x-hasselblad-3fr",
+        description: "Hasselblad raw image",
+    },
+    #[cfg(feature = "raw")]
+    FormatInfo {
+        extension: "iiq",
+        mime: "image/x-phaseone-iiq",
+        description: "Phase One raw image",
+    },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "mos", mime: "image/x-leaf-mos", description: "Leaf raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "srw", mime: "image/x-samsung-srw", description: "Samsung raw image" },
+    #[cfg(feature = "raw")]
+    FormatInfo { extension: "x3f", mime: "image/x-sigma-x3f", description: "Sigma raw image" },
 ];
 
 pub fn mime_list() -> Vec<&'static str> {
@@ -105,6 +173,17 @@ mod tests {
             );
         }
         assert!(plist.contains("<string>1.2.3</string>"));
+    }
+
+    #[test]
+    fn every_decodable_extension_can_be_registered() {
+        let registered = extensions();
+        for ext in crate::decode::supported_extensions() {
+            assert!(
+                registered.contains(&ext),
+                "{ext} decodes but is missing from the association table"
+            );
+        }
     }
 
     #[test]

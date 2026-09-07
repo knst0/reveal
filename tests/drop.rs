@@ -54,3 +54,20 @@ fn resolves_nothing_for_a_folder_without_images() {
     fs::write(dir.join("notes.txt"), "no images").unwrap();
     assert_eq!(reveal::drop::resolve(&[dir]), None);
 }
+
+#[test]
+fn file_urls_become_paths() {
+    let paths = reveal::drop::paths_from_urls(["file:///Users/me/holiday%20photo.png"]);
+    assert_eq!(paths, vec![std::path::PathBuf::from("/Users/me/holiday photo.png")]);
+}
+
+#[test]
+fn non_file_urls_are_ignored() {
+    assert!(reveal::drop::paths_from_urls(["https://example.com/a.png"]).is_empty());
+}
+
+#[test]
+fn percent_encoded_utf8_survives_the_round_trip() {
+    let paths = reveal::drop::paths_from_urls(["file:///tmp/%D1%84%D0%BE%D1%82%D0%BE.jpg"]);
+    assert_eq!(paths, vec![std::path::PathBuf::from("/tmp/фото.jpg")]);
+}

@@ -94,6 +94,10 @@ pub trait Decoder: Send + Sync {
     fn name(&self) -> &'static str;
     fn probe(&self, req: &DecodeRequest<'_>) -> bool;
     fn decode(&self, req: &DecodeRequest<'_>) -> Result<Decoded, DecodeError>;
+
+    fn orientation(&self, _req: &DecodeRequest<'_>) -> Option<Orientation> {
+        None
+    }
 }
 
 fn decoders() -> Vec<&'static dyn Decoder> {
@@ -109,7 +113,7 @@ pub fn decode(req: &DecodeRequest<'_>) -> Result<DecodeOutput, DecodeError> {
     let list = decoders();
     let decoder = list.iter().find(|d| d.probe(req)).ok_or(DecodeError::NoDecoder)?;
     let decoded = decoder.decode(req)?;
-    let orientation = exif_orientation(req.bytes);
+    let orientation = decoder.orientation(req).unwrap_or_else(|| exif_orientation(req.bytes));
     let display = build_display(&decoded, orientation, req);
     Ok(DecodeOutput { decoded, orientation, display })
 }

@@ -1,0 +1,124 @@
+name: Check
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to verify. Defaults to the calling workflow's ref.
+        required: false
+        type: string
+        default: ''
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check:
+    name: Check ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy, rustfmt
+
+      - name: Lint the release plumbing
+        if: runner.os == 'Linux'
+        run: |
+          .github/scripts/changeset.sh status
+          cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets
+
+      - name: Test
+        run: cargo test --locked
+
+  features:
+    name: Feature combinations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ./.github/actions/setup-rust
+
+      - name: Default, minimal, Flatpak and tooling feature sets
+        run: |
+          cargo check --locked --all-targets
+          cargo check --locked --no-default-features --all-targets
+          cargo check --locked --no-default-features --features raw --all-targets
+          cargo check --locked --features tools --all-targets
+
+  audit:
+    name: Advisories
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ github.token }}
+          # paste, rustybuzz and ttf-parser are unmaintained but reachable only
+          # through image and gpui; drop these once those crates move on.
+          ignore: RUSTSEC-2024-0436,RUSTSEC-2026-0206,RUSTSEC-2026-0192
+
+  workflows:
+    name: Workflows and scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Shell syntax and ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck
+          mapfile -t scripts < <(find .github/scripts -name '*.sh')
+          for script in "${scripts[@]}"; do
+            bash -n "$script"
+          done
+          shellcheck "${scripts[@]}"
+
+      - name: actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+      - name: PowerShell syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem -Recurse -Filter *.ps1 .github/scripts | ForEach-Object {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { throw "$($_.FullName): $($errors -join '; ')" }
+          }

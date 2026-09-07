@@ -1,6 +1,7 @@
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 
-use crate::decode::{Decoded, DecodedImage};
+use crate::decode::{Decoded, DecodedImage, Orientation};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ActionError {
@@ -19,22 +20,38 @@ pub fn first_frame(decoded: &Decoded) -> Option<&DecodedImage> {
     }
 }
 
-pub fn copy_to_clipboard(decoded: &Decoded) -> Result<(), ActionError> {
+static CLIPBOARD: OnceLock<Mutex<Option<arboard::Clipboard>>> = OnceLock::new();
+
+fn with_clipboard<T>(
+    f: impl FnOnce(&mut arboard::Clipboard) -> Result<T, ActionError>,
+) -> Result<T, ActionError> {
+    let cell = CLIPBOARD.get_or_init(|| Mutex::new(None));
+    let mut guard = cell.lock().unwrap_or_else(|e| e.into_inner());
+    if guard.is_none() {
+        *guard =
+            Some(arboard::Clipboard::new().map_err(|e| ActionError::Clipboard(e.to_string()))?);
+    }
+    let clipboard = guard.as_mut().expect("clipboard was just initialised");
+    f(clipboard)
+}
+
+pub fn copy_to_clipboard(decoded: &Decoded, orientation: Orientation) -> Result<(), ActionError> {
     let image = first_frame(decoded).ok_or(ActionError::NoImage)?;
+    let image = crate::render::oriented(image, orientation);
     let data = arboard::ImageData {
         width: image.width as usize,
         height: image.height as usize,
         bytes: std::borrow::Cow::Borrowed(&image.rgba),
     };
-    let mut clipboard =
-        arboard::Clipboard::new().map_err(|e| ActionError::Clipboard(e.to_string()))?;
-    clipboard.set_image(data).map_err(|e| ActionError::Clipboard(e.to_string()))
+    with_clipboard(|clipboard| {
+        clipboard.set_image(data).map_err(|e| ActionError::Clipboard(e.to_string()))
+    })
 }
 
 pub fn paste_from_clipboard() -> Result<DecodedImage, ActionError> {
-    let mut clipboard =
-        arboard::Clipboard::new().map_err(|e| ActionError::Clipboard(e.to_string()))?;
-    let image = clipboard.get_image().map_err(|e| ActionError::Clipboard(e.to_string()))?;
+    let image = with_clipboard(|clipboard| {
+        clipboard.get_image().map_err(|e| ActionError::Clipboard(e.to_string()))
+    })?;
     let (width, height) = (image.width as u32, image.height as u32);
     if width == 0 || height == 0 {
         return Err(ActionError::NoImage);

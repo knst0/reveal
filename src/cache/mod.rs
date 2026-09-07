@@ -41,8 +41,13 @@ pub struct LoadRequest {
 
 pub fn measure(output: &DecodeOutput) -> usize {
     use crate::decode::Decoded;
-    match &output.decoded {
+    let decoded = match &output.decoded {
         Decoded::Still(img) => img.rgba.len(),
         Decoded::Animation(frames) => frames.iter().map(|f| f.image.rgba.len()).sum(),
-    }
+    };
+    let display = output
+        .display
+        .as_ref()
+        .map_or(0, |d| (d.width as usize).saturating_mul(d.height as usize).saturating_mul(4));
+    decoded.saturating_add(display)
 }

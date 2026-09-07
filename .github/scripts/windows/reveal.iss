@@ -48,7 +48,8 @@ Name: "{autodesktop}\Reveal"; Filename: "{app}\reveal.exe"; Tasks: desktopicon
 [Registry]
 Root: HKA; Subkey: "Software\Classes\Applications\reveal.exe\shell\open\command"; \
   ValueType: string; ValueName: ""; ValueData: """{app}\reveal.exe"" ""%1"""; Flags: uninsdeletekey
-Root: HKA; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
+Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; \
+  ValueType: expandsz; ValueName: "Path"; \
   ValueData: "{olddata};{app}"; Tasks: addtopath; \
   Check: NeedsAddPath('{app}')
 
@@ -56,14 +57,45 @@ Root: HKA; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
 Filename: "{app}\reveal.exe"; Description: "{cm:LaunchProgram,Reveal}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+const
+  EnvKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+
 function NeedsAddPath(Param: string): Boolean;
 var
   OrigPath: string;
 begin
-  if not RegQueryStringValue(HKA, 'Environment', 'Path', OrigPath) then
+  if not RegQueryStringValue(HKLM, EnvKey, 'Path', OrigPath) then
   begin
     Result := True;
     exit;
   end;
   Result := Pos(';' + ExpandConstant(Param) + ';', ';' + OrigPath + ';') = 0;
+end;
+
+// Drop only the entry this installer added, leaving the rest of PATH intact.
+procedure RemoveFromPath(Dir: string);
+var
+  OrigPath: string;
+  Needle: string;
+  P: Integer;
+begin
+  if not RegQueryStringValue(HKLM, EnvKey, 'Path', OrigPath) then
+    exit;
+
+  Needle := ';' + Dir + ';';
+  P := Pos(Needle, ';' + OrigPath + ';');
+  if P = 0 then
+    exit;
+
+  Delete(OrigPath, P, Length(Dir) + 1);
+  if (Length(OrigPath) > 0) and (OrigPath[1] = ';') then
+    Delete(OrigPath, 1, 1);
+
+  RegWriteExpandStringValue(HKLM, EnvKey, 'Path', OrigPath);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+    RemoveFromPath(ExpandConstant('{app}'));
 end;

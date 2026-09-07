@@ -1,5 +1,5 @@
 use reveal::config::Channel;
-use reveal::update::{Install, detect_install, is_newer, pick_upgrade};
+use reveal::update::{Install, detect_install, detect_install_with, is_newer, pick_upgrade};
 
 #[test]
 fn only_a_standalone_install_may_replace_its_own_binary() {
@@ -21,14 +21,12 @@ fn a_flatpak_sandbox_is_detected_from_the_environment() {
     if !cfg!(target_os = "linux") {
         return;
     }
-    unsafe { std::env::set_var("FLATPAK_ID", "io.github.knst0.reveal") };
-    let detected = detect_install();
-    unsafe { std::env::remove_var("FLATPAK_ID") };
-    assert_eq!(detected, Install::Flatpak);
+    assert_eq!(detect_install_with(true), Install::Flatpak);
 }
 
 #[test]
 fn the_test_binary_is_a_standalone_install() {
+    assert_eq!(detect_install_with(false), Install::Standalone);
     assert_eq!(detect_install(), Install::Standalone);
 }
 
