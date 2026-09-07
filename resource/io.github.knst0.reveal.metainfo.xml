@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.knst0.reveal</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Reveal</name>
+  <summary>A fast image viewer</summary>
+  <description>
+    <p>
+      Reveal is a fast, keyboard-driven image viewer. It opens common raster
+      formats along with SVG, AVIF, JPEG XL and camera raw files, and is built
+      to stay responsive on large images and long directories.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.knst0.reveal.desktop</launchable>
+  <url type="homepage">https://github.com/knst0/reveal</url>
+  <url type="bugtracker">https://github.com/knst0/reveal/issues</url>
+  <developer id="io.github.knst0">
+    <name>knst0</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.3.2" date="2026-01-01"/>
+  </releases>
+</component>

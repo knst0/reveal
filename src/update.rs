@@ -21,12 +21,75 @@ pub enum UpdateStatus {
     UpToDate,
     Available { version: String },
     Installed { version: String },
+    Managed { version: String, by: Install },
     Failed { error: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Install {
+    Standalone,
+    MacosBundle,
+    WindowsInstaller,
+    Flatpak,
+}
+
+impl Install {
+    pub fn can_self_update(self) -> bool {
+        self == Install::Standalone
+    }
+
+    pub fn upgrade_hint(self) -> &'static str {
+        match self {
+            Install::Standalone => "",
+            Install::MacosBundle => "Run `brew upgrade --cask reveal` to update.",
+            Install::WindowsInstaller => "Download the latest installer to update.",
+            Install::Flatpak => "Run `flatpak update io.github.knst0.reveal` to update.",
+        }
+    }
+}
+
+pub fn detect_install() -> Install {
+    if cfg!(target_os = "linux") && std::env::var_os("FLATPAK_ID").is_some() {
+        return Install::Flatpak;
+    }
+
+    let Ok(exe) = std::env::current_exe() else {
+        return Install::Standalone;
+    };
+    // current_exe may hand back the symlink Homebrew puts on the PATH rather than
+    // the binary inside the bundle, so resolve it before looking for Reveal.app.
+    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
+
+    if cfg!(target_os = "macos") && exe.components().any(|c| c.as_os_str() == "Reveal.app") {
+        return Install::MacosBundle;
+    }
+
+    if cfg!(windows) && !parent_is_writable(&exe) {
+        return Install::WindowsInstaller;
+    }
+
+    Install::Standalone
+}
+
+fn parent_is_writable(exe: &std::path::Path) -> bool {
+    let Some(dir) = exe.parent() else {
+        return false;
+    };
+    // A fixed name would let two instances starting at once delete each other's probe.
+    let probe = dir.join(format!(".reveal-write-probe-{}", std::process::id()));
+    match std::fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UpdateNotice {
     Available { version: String },
+    Managed { version: String, by: Install },
     Installed { version: String },
     Upgraded { from: Option<String>, to: String },
 }
@@ -192,6 +255,11 @@ pub fn install(channel: Channel) -> UpdateStatus {
         Ok(None) => return UpdateStatus::UpToDate,
         Err(error) => return UpdateStatus::Failed { error },
     };
+
+    let install = detect_install();
+    if !install.can_self_update() {
+        return UpdateStatus::Managed { version, by: install };
+    }
 
     let result = self_update::backends::github::Update::configure()
         .repo_owner(REPO_OWNER)

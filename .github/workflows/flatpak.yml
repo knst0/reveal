@@ -1,0 +1,110 @@
+name: Flatpak
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      ref:
+        required: true
+        type: string
+      publish:
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Generate cargo sources
+        run: |
+          python3 -m pip install --break-system-packages aiohttp toml
+          .github/scripts/flatpak-sources.sh
+
+      - name: Build bundle
+        uses: flathub-infra/flatpak-github-actions/flatpak-builder@23796715b3dfa4c86ddf50cf29c3cc8b3c82dd8e # v6.5
+        with:
+          manifest-path: flatpak/io.github.knst0.reveal.yaml
+          bundle: reveal-${{ inputs.version }}-${{ matrix.arch }}.flatpak
+          arch: ${{ matrix.arch }}
+          upload-artifact: true
+          artifact-name: flatpak-${{ matrix.arch }}
+
+  repo:
+    name: Publish flatpak repo
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: flatpak-*
+          path: bundles
+          merge-multiple: true
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak ostree
+
+      - id: key
+        name: Import the signing key
+        env:
+          KEY: ${{ secrets.FLATPAK_GPG_KEY }}
+        run: .github/scripts/gpg-import.sh
+
+      - name: Fetch the published repo
+        run: |
+          git clone --depth 1 --branch flatpak-repo \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" site || mkdir site
+          rm -rf site/.git
+
+      - name: Publish the bundles
+        run: .github/scripts/flatpak-publish.sh bundles site "${{ steps.key.outputs.fingerprint }}"
+
+      - name: Export bundles for the release
+        run: .github/scripts/flatpak-export.sh site/repo "${{ inputs.version }}" dist
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-flatpak
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Push the repo
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: .github/scripts/flatpak-push.sh site

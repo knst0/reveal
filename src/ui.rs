@@ -1,7 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Div, Hsla, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, div, px, rgb,
+    Div, Hsla, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
 use crate::actions::Theme;
@@ -137,10 +136,6 @@ pub fn menu_separator(p: Palette) -> Div {
     div().my_1().h(px(1.)).bg(color(p.border_variant))
 }
 
-pub fn menu_section(p: Palette, label: impl Into<gpui::SharedString>) -> Div {
-    div().px_2().py_1().text_size(px(11.)).text_color(color(p.text_muted)).child(label.into())
-}
-
 pub struct MenuItem {
     id: gpui::ElementId,
     label: gpui::SharedString,
@@ -203,19 +198,6 @@ impl MenuItem {
     }
 }
 
-pub fn key_chip(p: Palette, keys: impl Into<gpui::SharedString>) -> Div {
-    div()
-        .px_1p5()
-        .py(px(1.))
-        .rounded(px(3.))
-        .bg(color(p.element_hover))
-        .border_1()
-        .border_color(color(p.border_variant))
-        .text_size(px(11.))
-        .text_color(color(p.text_muted))
-        .child(keys.into())
-}
-
 pub fn overlay_panel(p: Palette) -> Div {
     div()
         .bg(color(p.elevated))
@@ -239,10 +221,6 @@ pub fn panel_header(p: Palette, title: impl Into<gpui::SharedString>) -> Div {
         .text_size(px(13.))
         .text_color(color(p.text))
         .child(title.into())
-}
-
-pub fn into_any(element: impl IntoElement) -> AnyElement {
-    element.into_any_element()
 }
 
 pub const TOAST_WIDTH: f32 = 340.0;

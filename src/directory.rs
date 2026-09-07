@@ -68,10 +68,6 @@ impl Directory {
         Self { last_modified: None, dir, entries, current: 0 }
     }
 
-    pub fn is_provisional(&self) -> bool {
-        self.last_modified.is_none() && !self.entries.is_empty()
-    }
-
     pub fn open_at(path: &Path) -> io::Result<Self> {
         let (dir, file) = split_target(path);
 
@@ -136,18 +132,6 @@ impl Directory {
             }
             None => false,
         }
-    }
-
-    pub fn set_index(&mut self, index: usize) -> Option<&Path> {
-        if index >= self.entries.len() {
-            return None;
-        }
-        self.current = index;
-        self.current()
-    }
-
-    pub fn changed_on_disk(&self) -> bool {
-        modified_of(&self.dir) != self.last_modified
     }
 
     pub fn refresh(&mut self) -> io::Result<()> {
