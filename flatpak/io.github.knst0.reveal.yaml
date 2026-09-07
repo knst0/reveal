@@ -18,16 +18,14 @@ finish-args:
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin
   prepend-ld-library-path: /usr/lib/sdk/llvm18/lib
-  build-args:
-    - --share=network
   env:
     CARGO_HOME: /run/build/reveal/cargo
+    CARGO_NET_OFFLINE: 'true'
 
 modules:
   - name: reveal
     buildsystem: simple
     build-commands:
-      - cargo --offline fetch --manifest-path Cargo.toml --verbose
       - cargo --offline build --release --locked
       - install -Dm755 target/release/reveal /app/bin/reveal
       - install -Dm644 resource/io.github.knst0.reveal.desktop
@@ -39,4 +37,9 @@ modules:
     sources:
       - type: dir
         path: ..
+        skip:
+          - target
+          - .git
+          - dist
+          - release-staging
       - cargo-sources.json
