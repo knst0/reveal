@@ -83,6 +83,7 @@ jobs:
         name: Import the signing key
         env:
           KEY: ${{ secrets.FLATPAK_GPG_KEY }}
+          PASSPHRASE: ${{ secrets.FLATPAK_GPG_PASSPHRASE }}
         run: .github/scripts/gpg-import.sh
 
       - name: Fetch the published repo
