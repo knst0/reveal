@@ -41,8 +41,48 @@ fn install_desktop_entry(mimes: &[&str]) -> Result<(), Error> {
     Ok(())
 }
 
+const FLATPAK_DESKTOP_FILE: &str = "io.github.knst0.reveal.desktop";
+
+// Inside the sandbox the XDG directories and /app/bin are private to the
+// application, so a desktop entry written here can never become a host
+// default. xdg-mime has to run on the host through the spawn portal instead.
+fn register_flatpak(mimes: &[&str]) -> Result<Outcome, Error> {
+    let mut registered = 0;
+    for mime in mimes {
+        let status = Command::new("flatpak-spawn")
+            .args(["--host", "xdg-mime", "default", FLATPAK_DESKTOP_FILE, mime])
+            .status();
+        match status {
+            Ok(status) if status.success() => registered += 1,
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+            Err(e) => return Err(Error::Io(e)),
+        }
+    }
+
+    if registered == 0 {
+        return Ok(Outcome {
+            registered: 0,
+            needs_user_action: Some(
+                "Reveal is running as a Flatpak and cannot change host defaults itself. \
+                 Set Reveal as the default image viewer in your system settings."
+                    .to_owned(),
+            ),
+        });
+    }
+
+    Ok(Outcome { registered, needs_user_action: None })
+}
+
+fn in_flatpak() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists()
+}
+
 pub fn register() -> Result<Outcome, Error> {
     let mimes = mime_list();
+    if in_flatpak() {
+        return register_flatpak(&mimes);
+    }
     install_desktop_entry(&mimes)?;
     let mut registered = 0;
     let mut failures = Vec::new();

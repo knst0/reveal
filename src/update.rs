@@ -49,7 +49,11 @@ impl Install {
 }
 
 pub fn detect_install() -> Install {
-    if cfg!(target_os = "linux") && std::env::var_os("FLATPAK_ID").is_some() {
+    detect_install_with(std::env::var_os("FLATPAK_ID").is_some())
+}
+
+pub fn detect_install_with(in_flatpak: bool) -> Install {
+    if cfg!(target_os = "linux") && in_flatpak {
         return Install::Flatpak;
     }
 
