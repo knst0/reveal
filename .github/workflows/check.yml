@@ -70,6 +70,23 @@ jobs:
           cargo check --locked --no-default-features --features raw --all-targets
           cargo check --locked --features tools --all-targets
 
+  audit:
+    name: Advisories
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ github.token }}
+          # paste, rustybuzz and ttf-parser are unmaintained but reachable only
+          # through image and gpui; drop these once those crates move on.
+          ignore: RUSTSEC-2024-0436,RUSTSEC-2026-0206,RUSTSEC-2026-0192
+
   workflows:
     name: Workflows and scripts
     runs-on: ubuntu-latest

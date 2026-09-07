@@ -72,3 +72,17 @@ fn container_rotation_is_reported_as_orientation() {
         "an irot property must drive the presented orientation"
     );
 }
+
+// The pinned zenavif-parse 0.6.2 reports a grid config without output
+// dimensions and exposes no `ispe` accessor, so the cropped size the container
+// declares cannot be recovered and the full tile mosaic is presented instead.
+// Reference decoders report 80x80 for this fixture.
+#[test]
+fn grid_avif_decodes_to_the_full_tile_mosaic() {
+    let path = fixture("color_grid_alpha_nogrid.avif");
+    let bytes = std::fs::read(&path).unwrap();
+
+    let out = decode(&request(&path, &bytes)).expect("the grid fixture must decode");
+    let Decoded::Still(image) = out.decoded else { panic!("expected a still image") };
+    assert_eq!((image.width, image.height), (80, 128));
+}
