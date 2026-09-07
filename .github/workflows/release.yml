@@ -3,10 +3,6 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      dry-run:
-        description: 'Build everything but do not tag or publish'
-        type: boolean
-        default: false
       draft:
         description: 'Create the GitHub release as a draft'
         type: boolean
@@ -31,18 +27,43 @@ jobs:
     name: Prepare
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     outputs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       sha: ${{ steps.meta.outputs.sha }}
+      branch: ${{ steps.bump.outputs.branch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: true
+
+      - id: bump
+        name: Bump the version on a release branch
+        run: |
+          status=$(.github/scripts/changeset.sh status)
+          echo "$status"
+          version=$(printf '%s\n' "$status" |
+            sed -n 's/^[0-9]* changeset(s): .* -> \([0-9][0-9.]*\).*/\1/p' | head -n1)
+          [ -n "$version" ] || { echo "::error::no pending changesets; nothing to release"; exit 1; }
+
+          branch="release/v${version}"
+          git switch -c "$branch"
+
+          bumped=$(.github/scripts/changeset.sh version | tail -n1)
+          [ "$bumped" = "$version" ] ||
+            { echo "::error::version mismatch: expected ${version}, got ${bumped}"; exit 1; }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(release): v${version}"
+
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
 
       - id: meta
-        name: Resolve version
+        name: Resolve version and guard the tag
         run: .github/scripts/version.sh
 
       - name: Release notes
@@ -53,6 +74,9 @@ jobs:
           name: release-notes
           path: RELEASE_NOTES.md
           if-no-files-found: error
+
+      - name: Push the release branch
+        run: git push --force-with-lease --set-upstream origin "${{ steps.bump.outputs.branch }}"
 
   build:
     name: Build ${{ matrix.target }}
@@ -162,7 +186,7 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       ref: ${{ needs.prepare.outputs.sha }}
-      publish: ${{ !inputs.dry-run }}
+      publish: true
 
   publish:
     name: Publish
@@ -192,21 +216,12 @@ jobs:
         working-directory: dist
         run: sha256sum -- * | tee SHA256SUMS
 
-      - name: Dry run summary
-        if: inputs.dry-run
-        run: |
-          echo "Dry run for ${{ needs.prepare.outputs.tag }} at ${{ needs.prepare.outputs.sha }}"
-          ls -l dist
-          cat RELEASE_NOTES.md
-
       - name: Attest build provenance
-        if: '!inputs.dry-run'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
 
       - name: Tag and release
-        if: '!inputs.dry-run'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.prepare.outputs.tag }}
@@ -216,7 +231,6 @@ jobs:
   homebrew:
     name: Bump Homebrew cask
     needs: [prepare, publish]
-    if: '!inputs.dry-run'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -245,7 +259,6 @@ jobs:
   crates-io:
     name: Publish to crates.io
     needs: [prepare, publish]
-    if: '!inputs.dry-run'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -265,3 +278,43 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: .github/scripts/crates-publish.sh
+
+  sync-pr:
+    name: Sync PR into main
+    needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-notes
+
+      - name: Open or update the sync PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ needs.prepare.outputs.branch }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            cat RELEASE_NOTES.md
+            printf '\n---\n\n'
+            printf 'Post-release sync — version bump, changelog, and consumed changesets for '
+            printf '**%s**, already published at https://github.com/%s/releases/tag/%s.\n\n' \
+              "$TAG" "$REPO" "$TAG"
+            printf 'Merge (do not squash) to keep the tagged commit reachable from `main`.\n'
+          } > body.md
+
+          existing=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --title "chore(release): ${TAG}" --body-file body.md
+          else
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(release): ${TAG}" --label release --body-file body.md
+          fi
