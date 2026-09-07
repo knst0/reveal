@@ -86,6 +86,9 @@ jobs:
     uses: ./.github/workflows/check.yml
     with:
       ref: ${{ needs.prepare.outputs.sha }}
+      # The release commit only bumps packaging metadata on top of a tree the
+      # pull request already checked on macOS and Windows.
+      linux-only: true
 
   build:
     name: Build ${{ matrix.target }}
