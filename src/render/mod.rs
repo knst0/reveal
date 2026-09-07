@@ -312,7 +312,6 @@ fn unoriented_target(physical: (f32, f32), orientation: Orientation) -> (f32, f3
 #[derive(Clone)]
 pub struct Display {
     pub render: Arc<RenderImage>,
-    pub rgba: Vec<u8>,
     pub width: u32,
     pub height: u32,
     pub source: (u32, u32),
@@ -341,10 +340,6 @@ impl Display {
         let expected = downscaled_size((image.width, image.height), target);
         oriented_size(expected, orientation) == (self.width, self.height)
     }
-
-    pub fn base(&self) -> DecodedImage {
-        DecodedImage { rgba: self.rgba.clone(), width: self.width, height: self.height }
-    }
 }
 
 pub fn prepare_display(
@@ -360,19 +355,12 @@ pub fn prepare_display(
         std::borrow::Cow::Owned(o) => o,
         std::borrow::Cow::Borrowed(_) => scaled.into_owned(),
     };
-    let mut bgra = placed.rgba.clone();
+    let mut bgra = placed.rgba;
     for px in bgra.chunks_exact_mut(4) {
         px.swap(0, 2);
     }
     let buffer = RgbaImage::from_raw(placed.width, placed.height, bgra)
         .expect("display buffer must match its dimensions");
     let render = Arc::new(RenderImage::new(vec![Frame::new(buffer)]));
-    Display {
-        render,
-        width: placed.width,
-        height: placed.height,
-        rgba: placed.rgba,
-        source,
-        resample,
-    }
+    Display { render, width: placed.width, height: placed.height, source, resample }
 }

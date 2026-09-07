@@ -263,19 +263,14 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
-          for attempt in 1 2 3 4 5; do
-            if out=$(cargo publish --locked --no-verify 2>&1); then
-              echo "$out"
-              exit 0
-            fi
+          if out=$(cargo publish --locked --no-verify 2>&1); then
+            echo "$out"
+          else
             echo "$out"
             if echo "$out" | grep -qi "already uploaded\|already exists"; then
               echo "Version already on crates.io; treating as success."
               exit 0
             fi
-            delay=$((15 * 2 ** (attempt - 1)))
-            echo "Publish attempt $attempt failed; retrying in ${delay}s."
-            sleep "$delay"
-          done
-          echo "cargo publish failed after 5 attempts."
-          exit 1
+            echo "cargo publish failed."
+            exit 1
+          fi
