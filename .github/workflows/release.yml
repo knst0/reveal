@@ -327,6 +327,66 @@ jobs:
             ${{ inputs.draft && '--draft' || '' }} \
             dist/*
 
+  homebrew:
+    name: Bump Homebrew cask
+    needs: [prepare, publish]
+    if: '!inputs.dry-run'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          sparse-checkout: scripts/homebrew
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: reveal-macos-bundle
+          path: dist
+
+      - name: Check out the tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: knst0/homebrew-reveal
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Render the cask
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          sha_tarball=$(sha256sum "dist/reveal-${VERSION}-universal-apple-darwin.tar.gz" | cut -d' ' -f1)
+          sha_dmg=$(sha256sum "dist/reveal-${VERSION}-macos.dmg" | cut -d' ' -f1)
+          mkdir -p tap/Casks
+          sed \
+            -e "s/__VERSION__/${VERSION}/" \
+            -e "s/__SHA256__/${sha_tarball}/" \
+            scripts/homebrew/reveal.rb.tmpl > tap/Casks/reveal.rb
+          sed \
+            -e "s/__VERSION__/${VERSION}/" \
+            -e "s/__SHA256_DMG__/${sha_dmg}/" \
+            scripts/homebrew/reveal-app.rb.tmpl > tap/Casks/reveal-app.rb
+          cat tap/Casks/reveal.rb tap/Casks/reveal-app.rb
+
+      - name: Commit and push
+        working-directory: tap
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/reveal.rb Casks/reveal-app.rb
+          if git diff --cached --quiet; then
+            echo "Cask already up to date."
+            exit 0
+          fi
+          git commit -m "reveal ${VERSION}"
+          git push
+
   crates-io:
     name: Publish to crates.io
     needs: [prepare, publish]
