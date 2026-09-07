@@ -1,5 +1,49 @@
 # reveal
 
+## 0.4.1
+
+### Patch Changes
+
+- 6c893a3: Fix AVIF decoding defects. Animated files keep their AV1 decoder state across
+  frames so sequences with inter-frame dependencies decode, images using the
+  identity matrix coefficients keep their RGB channels, container `irot` and
+  `imir` rotation is honoured when no EXIF orientation is present, and each
+  decoder instance is limited to one worker thread so concurrent decodes no
+  longer oversubscribe the machine.
+- 6835ba7: Register every decodable format and fix Linux integration. File associations
+  now cover all RAW, EXR, QOI, farbfeld, SVGZ and PNM variants instead of only
+  sixteen extensions, a test keeps the association table in step with the
+  decoders, the Wayland clipboard backend is enabled on Linux so copy and paste
+  work inside the Flatpak sandbox, and setting default applications from a
+  Flatpak now targets the host rather than the sandbox.
+- b436589: Open images handed over by the desktop environment. Files opened from Finder or
+  through "Open With" now reach the viewer, both when they start Reveal and when
+  it is already running, instead of being dropped.
+- 738fc2b: Fix missing text in SVGs on macOS. User-installed fonts from `~/Library/Fonts`
+  are now loaded, macOS font families are recognised when resolving the generic
+  serif, sans-serif, cursive and monospace families, and symbol-only faces are no
+  longer picked as the fallback font.
+- 592b06c: Harden the release pipeline. Every publish now verifies the exact commit being
+  released with the full test, lint, feature and workflow checks before any
+  artifact or public channel is touched, the Flatpak repository is deployed to
+  GitHub Pages and checked for reachability instead of only pushed to a branch,
+  the Flatpak bundles are collected into the GitHub release, a draft release no
+  longer updates Homebrew, crates.io or the Flatpak remote, the artifact set is
+  checked for completeness before publishing, pull request checks cover
+  packaging, resources and workflow changes, and uninstalling on Windows removes
+  only Reveal's own PATH entry.
+- 3cda8c0: Fix image scaling, presentation and clipboard defects. Downscaling no longer
+  enlarges extreme aspect ratios into multi-gigabyte buffers, Fit to Window and
+  Original Size follow viewport and DPI changes, the zoom percentage is reported
+  against the source image, opening a file by a bare relative name no longer
+  leaves an empty window, opening a folder no longer blocks the interface,
+  copied images keep their EXIF orientation and hold the clipboard selection, and
+  delete confirmation is bound to the image it was requested for.
+- 4219df2: Fix the Windows installer failing with `RegCreateKeyEx failed; code 87` when
+  adding Reveal to the PATH. Write the system PATH to its actual location under
+  `Session Manager\Environment` instead of the non-existent `HKLM\Environment`,
+  and read the same key when checking whether the entry is already present.
+
 ## 0.4.0
 
 ### Minor Changes
