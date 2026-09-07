@@ -32,9 +32,19 @@ fn first_present(db: &usvg::fontdb::Database, candidates: &[&str]) -> Option<Str
     candidates.iter().find(|name| has(name)).map(|name| (*name).to_string())
 }
 
+fn is_text_face(face: &usvg::fontdb::FaceInfo) -> bool {
+    const SYMBOL_MARKERS: &[&str] =
+        &["symbol", "emoji", "dingbat", "ornament", "icon", "wingding", "webding"];
+    !face.families.iter().any(|(family, _)| {
+        let lowered = family.to_lowercase();
+        SYMBOL_MARKERS.iter().any(|marker| lowered.contains(marker))
+    })
+}
+
 fn any_family(db: &usvg::fontdb::Database, monospace: bool) -> Option<String> {
     db.faces()
-        .find(|face| face.monospaced == monospace)
+        .find(|face| face.monospaced == monospace && is_text_face(face))
+        .or_else(|| db.faces().find(|face| is_text_face(face)))
         .or_else(|| db.faces().next())
         .and_then(|face| face.families.first().map(|(family, _)| family.clone()))
 }
@@ -45,21 +55,44 @@ fn resolve_generic_families(db: &usvg::fontdb::Database) -> GenericFamilies {
     GenericFamilies {
         serif: first_present(
             db,
-            &["Times New Roman", "Liberation Serif", "DejaVu Serif", "Noto Serif", "Georgia"],
+            &[
+                "Times New Roman",
+                "Times",
+                "Liberation Serif",
+                "DejaVu Serif",
+                "Noto Serif",
+                "Georgia",
+            ],
         )
         .or_else(|| fallback.clone()),
         sans_serif: first_present(
             db,
-            &["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans", "Noto Sans", "Ubuntu"],
+            &[
+                "Arial",
+                "Helvetica",
+                "Helvetica Neue",
+                "SF Pro Text",
+                "SF Pro",
+                "Liberation Sans",
+                "DejaVu Sans",
+                "Noto Sans",
+                "Ubuntu",
+            ],
         )
         .or_else(|| fallback.clone()),
-        cursive: first_present(db, &["Comic Sans MS", "Comic Neue", "URW Chancery L"])
-            .or_else(|| fallback.clone()),
+        cursive: first_present(
+            db,
+            &["Comic Sans MS", "Comic Neue", "Snell Roundhand", "Apple Chancery", "URW Chancery L"],
+        )
+        .or_else(|| fallback.clone()),
         fantasy: first_present(db, &["Impact", "Papyrus", "Ubuntu"]).or_else(|| fallback.clone()),
         monospace: first_present(
             db,
             &[
                 "Courier New",
+                "Menlo",
+                "Monaco",
+                "SF Mono",
                 "Liberation Mono",
                 "DejaVu Sans Mono",
                 "Noto Sans Mono",
@@ -70,11 +103,34 @@ fn resolve_generic_families(db: &usvg::fontdb::Database) -> GenericFamilies {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn user_font_dirs() -> Vec<std::path::PathBuf> {
+    let Some(home) = std::env::var_os("HOME") else {
+        return Vec::new();
+    };
+    let home = std::path::PathBuf::from(home);
+    vec![home.join("Library/Fonts"), home.join("Library/Application Support/Fonts")]
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+fn user_font_dirs() -> Vec<std::path::PathBuf> {
+    Vec::new()
+}
+
+fn load_user_fonts(db: &mut usvg::fontdb::Database) {
+    for dir in user_font_dirs() {
+        if dir.is_dir() {
+            db.load_fonts_dir(dir);
+        }
+    }
+}
+
 fn font_setup() -> Arc<FontSetup> {
     SYSTEM_FONTS
         .get_or_init(|| {
             let mut db = usvg::fontdb::Database::new();
             db.load_system_fonts();
+            load_user_fonts(&mut db);
             let families = resolve_generic_families(&db);
             if let Some(name) = families.serif.clone() {
                 db.set_serif_family(name);
