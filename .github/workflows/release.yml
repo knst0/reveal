@@ -78,9 +78,18 @@ jobs:
       - name: Push the release branch
         run: git push --force-with-lease --set-upstream origin "${{ steps.bump.outputs.branch }}"
 
+  verify:
+    name: Verify the release commit
+    needs: prepare
+    permissions:
+      contents: read
+    uses: ./.github/workflows/check.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+
   build:
     name: Build ${{ matrix.target }}
-    needs: prepare
+    needs: [prepare, verify]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -178,15 +187,17 @@ jobs:
 
   flatpak:
     name: Flatpak
-    needs: prepare
+    needs: [prepare, verify]
     permissions:
       contents: write
+      pages: write
+      id-token: write
     uses: ./.github/workflows/flatpak.yml
     secrets: inherit
     with:
       version: ${{ needs.prepare.outputs.version }}
       ref: ${{ needs.prepare.outputs.sha }}
-      publish: true
+      publish: ${{ !inputs.draft }}
 
   publish:
     name: Publish
@@ -212,6 +223,11 @@ jobs:
           pattern: reveal-*
           merge-multiple: true
 
+      - name: Verify the artifact set is complete
+        env:
+          DRAFT: ${{ inputs.draft }}
+        run: .github/scripts/verify-artifacts.sh dist "${{ needs.prepare.outputs.version }}"
+
       - name: Checksums
         working-directory: dist
         run: sha256sum -- * | tee SHA256SUMS
@@ -231,6 +247,7 @@ jobs:
   homebrew:
     name: Bump Homebrew cask
     needs: [prepare, publish]
+    if: ${{ !inputs.draft }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -259,6 +276,7 @@ jobs:
   crates-io:
     name: Publish to crates.io
     needs: [prepare, publish]
+    if: ${{ !inputs.draft }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -282,6 +300,7 @@ jobs:
   sync-pr:
     name: Sync PR into main
     needs: [prepare, publish]
+    if: ${{ !inputs.draft }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -71,3 +71,31 @@ begin
   end;
   Result := Pos(';' + ExpandConstant(Param) + ';', ';' + OrigPath + ';') = 0;
 end;
+
+// Drop only the entry this installer added, leaving the rest of PATH intact.
+procedure RemoveFromPath(Dir: string);
+var
+  OrigPath: string;
+  Needle: string;
+  P: Integer;
+begin
+  if not RegQueryStringValue(HKLM, EnvKey, 'Path', OrigPath) then
+    exit;
+
+  Needle := ';' + Dir + ';';
+  P := Pos(Needle, ';' + OrigPath + ';');
+  if P = 0 then
+    exit;
+
+  Delete(OrigPath, P, Length(Dir) + 1);
+  if (Length(OrigPath) > 0) and (OrigPath[1] = ';') then
+    Delete(OrigPath, 1, 1);
+
+  RegWriteExpandStringValue(HKLM, EnvKey, 'Path', OrigPath);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+    RemoveFromPath(ExpandConstant('{app}'));
+end;
