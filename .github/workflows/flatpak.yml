@@ -48,7 +48,7 @@ jobs:
           .github/scripts/flatpak-sources.sh
 
       - name: Build bundle
-        uses: flathub-infra/flatpak-github-actions/flatpak-builder@23796715b3dfa4c86ddf50cf29c3cc8b3c82dd8e # v6.5
+        uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
           manifest-path: flatpak/io.github.knst0.reveal.yaml
           bundle: reveal-${{ inputs.version }}-${{ matrix.arch }}.flatpak
