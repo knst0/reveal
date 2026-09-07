@@ -1,5 +1,13 @@
 # reveal
 
+## 0.4.2
+
+### Patch Changes
+
+- 904403c: Fix the interface rendering without any text on macOS. `gpui_platform` was built
+  without the `font-kit` feature, so `gpui_macos` had no font backend and silently
+  skipped every glyph in the toolbar, status bar, menus and settings.
+
 ## 0.4.1
 
 ### Patch Changes
