@@ -26,7 +26,7 @@ modules:
   - name: reveal
     buildsystem: simple
     build-commands:
-      - cargo --offline build --release --locked
+      - cargo --offline build --release --locked --no-default-features --features raw
       - install -Dm755 target/release/reveal /app/bin/reveal
       - install -Dm644 resource/io.github.knst0.reveal.desktop
         /app/share/applications/io.github.knst0.reveal.desktop

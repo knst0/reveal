@@ -47,7 +47,17 @@ impl RevealApp {
                 match status {
                     UpdateStatus::Available { version } => {
                         if !update::is_skipped(&this.cache, &version) {
-                            this.update_notice = Some(UpdateNotice::Available { version });
+                            let by = update::detect_install();
+                            this.update_notice = Some(if by.can_self_update() {
+                                UpdateNotice::Available { version }
+                            } else {
+                                UpdateNotice::Managed { version, by }
+                            });
+                        }
+                    }
+                    UpdateStatus::Managed { version, by } => {
+                        if !update::is_skipped(&this.cache, &version) {
+                            this.update_notice = Some(UpdateNotice::Managed { version, by });
                         }
                     }
                     UpdateStatus::Installed { version } => {
@@ -85,6 +95,9 @@ impl RevealApp {
                         this.update_notice = Some(UpdateNotice::Installed { version });
                         this.save_cache();
                     }
+                    UpdateStatus::Managed { version, by } => {
+                        this.update_notice = Some(UpdateNotice::Managed { version, by });
+                    }
                     UpdateStatus::Failed { error } => {
                         log::warn!("update failed: {error}");
                         this.update_notice = None;
@@ -105,7 +118,9 @@ impl RevealApp {
     fn disable_update_checks(&mut self) {
         self.update_settings.check = false;
         self.config.updates.check = false;
-        if let Some(UpdateNotice::Available { version }) = &self.update_notice {
+        if let Some(UpdateNotice::Available { version } | UpdateNotice::Managed { version, .. }) =
+            &self.update_notice
+        {
             let version = version.clone();
             update::skip_version(&mut self.cache, &version);
         }
@@ -160,6 +175,40 @@ impl RevealApp {
                                 },
                             )),
                         ),
+                ),
+            UpdateNotice::Managed { version, by } => ui::toast(p)
+                .child(ui::toast_title(p, "Update available"))
+                .child(ui::toast_body(
+                    p,
+                    format!("Version {version} is available. {}", by.upgrade_hint()),
+                ))
+                .child(
+                    ui::toast_actions()
+                        .child(
+                            ui::toast_button("update-never", p, "Don\u{2019}t show again", false)
+                                .on_click(cx.listener(|this, _e, _w, cx| {
+                                    this.disable_update_checks();
+                                    cx.notify();
+                                })),
+                        )
+                        .child(ui::toast_button("update-close", p, "Close", false).on_click(
+                            cx.listener(|this, _e, _w, cx| {
+                                this.dismiss_update_notice();
+                                cx.notify();
+                            }),
+                        ))
+                        .child({
+                            let url = update::changelog_url(version);
+                            ui::toast_button("update-release", p, "Release notes", true).on_click(
+                                cx.listener(move |this, _e, _w, cx| {
+                                    if let Err(e) = open::that_detached(&url) {
+                                        log::warn!("failed to open release notes: {e}");
+                                    }
+                                    this.dismiss_update_notice();
+                                    cx.notify();
+                                }),
+                            )
+                        }),
                 ),
             UpdateNotice::Installed { version } => ui::toast(p)
                 .child(ui::toast_title(p, "Update installed"))
