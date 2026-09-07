@@ -1,9 +1,9 @@
 name: CI
 
 on:
-  push:
+  pull_request:
     branches: [main]
-    paths: &sources
+    paths:
       - 'src/**'
       - 'tests/**'
       - 'benches/**'
@@ -11,12 +11,10 @@ on:
       - 'Cargo.lock'
       - 'build.rs'
       - 'rust-toolchain.toml'
+      - '.changeset/**'
       - '.github/actions/setup-rust/action.yml'
       - '.github/scripts/changeset.sh'
       - '.github/workflows/ci.yml'
-  pull_request:
-    branches-ignore: [main]
-    paths: *sources
 
 permissions: {}
 
