@@ -1,59 +1,128 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AppContext, Context, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, div, px,
+    AppContext, Context, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render,
+    StatefulInteractiveElement, Styled, WeakEntity, Window, div, px,
 };
-use reveal::config::Channel;
-use reveal::input::{ALL_ACTIONS, Action, Binding};
-use reveal::settings::{APPEARANCE_FIELDS, SETTINGS_TABS, SettingsTab, ToggleField, UPDATE_FIELDS};
+use reveal::actions::Theme;
+use reveal::config::{Channel, UI_SCALES};
+use reveal::input::{ALL_ACTIONS, Action, Binding, Modifiers};
+use reveal::settings::{
+    APPEARANCE_FIELDS, SETTINGS_TABS, SettingsState, SettingsTab, ToggleField, UPDATE_FIELDS,
+};
 use reveal::ui::{self, Palette};
 
 use super::RevealApp;
 use super::labels::{action_label, format_binding};
+use super::titlebar;
 
-const PANEL_WIDTH: f32 = 560.0;
-const PANEL_HEIGHT: f32 = 460.0;
+pub const WINDOW_WIDTH: f32 = 560.0;
+pub const WINDOW_HEIGHT: f32 = 460.0;
 
-impl RevealApp {
-    pub fn render_settings(&self, p: Palette, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let Some(state) = self.settings.as_ref() else {
-            return div().into_any_element();
-        };
-        let tab = state.tab;
-        let dirty = state.is_dirty();
+pub struct SettingsWindow {
+    pub focus: gpui::FocusHandle,
+    state: SettingsState,
+    theme: Theme,
+    owner: WeakEntity<RevealApp>,
+}
 
-        div()
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(gpui::rgba(0x00000066))
-            .id("settings-backdrop")
-            .on_click(cx.listener(|this, _e, _window, cx| {
-                this.dismiss_settings_backdrop();
-                cx.notify();
-            }))
-            .child(
-                ui::overlay_panel(p)
-                    .occlude()
-                    .w(px(PANEL_WIDTH))
-                    .h(px(PANEL_HEIGHT))
-                    .text_size(px(12.))
-                    .flex()
-                    .flex_col()
-                    .overflow_hidden()
-                    .child(ui::panel_header(p, "Settings"))
-                    .child(self.render_settings_tabs(tab, p, cx))
-                    .child(match tab {
-                        SettingsTab::General => self.render_general_tab(p, cx).into_any_element(),
-                        SettingsTab::Keys => self.render_keys_tab(p, cx).into_any_element(),
-                    })
-                    .child(self.render_settings_footer(dirty, p, cx)),
-            )
-            .into_any_element()
+impl SettingsWindow {
+    pub fn new(
+        state: SettingsState,
+        theme: Theme,
+        owner: WeakEntity<RevealApp>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self { focus: cx.focus_handle(), state, theme, owner }
     }
 
+    fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let modifiers = Modifiers {
+            alt: event.keystroke.modifiers.alt,
+            cmd_ctrl: event.keystroke.modifiers.control || event.keystroke.modifiers.platform,
+            shift: event.keystroke.modifiers.shift,
+        };
+
+        if self.state.capturing.is_some() {
+            if self.state.capture_key(&event.keystroke.key, modifiers) {
+                self.preview(cx);
+            }
+            return;
+        }
+
+        if event.keystroke.key == "escape" {
+            window.remove_window();
+        }
+    }
+
+    fn preview(&mut self, cx: &mut Context<Self>) {
+        let config = self.state.config.clone();
+        let bindings = self.state.bindings.clone();
+        self.theme = Theme::from_dark(config.window.dark);
+        self.owner
+            .update(cx, |app, cx| {
+                app.apply_config(config, bindings);
+                cx.notify();
+            })
+            .ok();
+        cx.notify();
+    }
+
+    fn save(&mut self, cx: &mut Context<Self>) {
+        if let Err(e) = self.state.persist() {
+            log::warn!("failed to save settings: {e}");
+            self.state.notice = Some(format!("Could not save: {e}"));
+            return;
+        }
+        self.state.notice = Some("Settings saved.".to_owned());
+        let config = self.state.config.clone();
+        let bindings = self.state.bindings.clone();
+        self.theme = Theme::from_dark(config.window.dark);
+        self.owner
+            .update(cx, |app, cx| {
+                app.apply_config(config.clone(), bindings.clone());
+                app.settings_baseline = Some((config, bindings));
+                cx.notify();
+            })
+            .ok();
+    }
+}
+
+impl Render for SettingsWindow {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = ui::palette(self.theme);
+        let tab = self.state.tab;
+        let dirty = self.state.is_dirty();
+        window.set_rem_size(px(ui::BASE_REM * self.state.config.window.ui_scale.factor()));
+
+        div()
+            .size_full()
+            .relative()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .bg(ui::color(p.background))
+            .text_color(ui::color(p.text))
+            .text_size(px(13.))
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
+            .child(titlebar::header(p, "Settings", window))
+            .child(self.render_settings_tabs(tab, p, cx))
+            .child(match tab {
+                SettingsTab::General => self.render_general_tab(p, cx).into_any_element(),
+                SettingsTab::Keys => self.render_keys_tab(p, cx).into_any_element(),
+            })
+            .child(self.render_settings_footer(dirty, p, cx))
+            .children(titlebar::resize_handles(window))
+    }
+}
+
+impl gpui::Focusable for SettingsWindow {
+    fn focus_handle(&self, _cx: &gpui::App) -> gpui::FocusHandle {
+        self.focus.clone()
+    }
+}
+
+impl SettingsWindow {
     fn render_settings_tabs(
         &self,
         active: SettingsTab,
@@ -81,9 +150,7 @@ impl RevealApp {
                 )
                 .child(tab.label())
                 .on_click(cx.listener(move |this, _e, _w, cx| {
-                    if let Some(state) = this.settings.as_mut() {
-                        state.select_tab(tab);
-                    }
+                    this.state.select_tab(tab);
                     cx.notify();
                 }))
             }))
@@ -94,10 +161,9 @@ impl RevealApp {
     }
 
     fn render_general_tab(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.settings.as_ref().expect("settings open");
-        let config = state.config.clone();
+        let config = self.state.config.clone();
         let channel = config.updates.channel;
-        let notice = state.notice.clone();
+        let notice = self.state.notice.clone();
 
         let mut appearance = Vec::new();
         for field in APPEARANCE_FIELDS {
@@ -112,6 +178,26 @@ impl RevealApp {
             .children(notice.map(|text| div().text_color(ui::color(p.text_accent)).child(text)))
             .child(section_label(p, "Appearance"))
             .children(appearance)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().flex_grow(1.).child("Interface scale"))
+                    .children(UI_SCALES.iter().map(|scale| {
+                        let scale = *scale;
+                        ui::chip(
+                            ("ui-scale", scale as usize),
+                            p,
+                            scale == config.window.ui_scale,
+                        )
+                        .child(scale.label())
+                        .on_click(cx.listener(move |this, _e, _w, cx| {
+                            this.state.set_ui_scale(scale);
+                            this.preview(cx);
+                        }))
+                    })),
+            )
             .child(section_label(p, "Updates"))
             .children(updates)
             .child(
@@ -131,10 +217,8 @@ impl RevealApp {
                         )
                         .child(option.label())
                         .on_click(cx.listener(move |this, _e, _w, cx| {
-                            if let Some(state) = this.settings.as_mut() {
-                                state.set_channel(option);
-                            }
-                            cx.notify();
+                            this.state.set_channel(option);
+                            this.preview(cx);
                         }))
                     })),
             )
@@ -158,9 +242,7 @@ impl RevealApp {
                     )
                     .child(ui::toast_button("set-defaults", p, "Set defaults", false).on_click(
                         cx.listener(|this, _e, _w, cx| {
-                            if let Some(state) = this.settings.as_mut() {
-                                state.notice = Some("Setting defaults\u{2026}".to_owned());
-                            }
+                            this.state.notice = Some("Setting defaults\u{2026}".to_owned());
                             cx.spawn(async move |this, cx| {
                                 let notice = cx
                                     .background_spawn(async {
@@ -168,9 +250,7 @@ impl RevealApp {
                                     })
                                     .await;
                                 let _ = this.update(cx, |this, cx| {
-                                    if let Some(state) = this.settings.as_mut() {
-                                        state.notice = Some(notice);
-                                    }
+                                    this.state.notice = Some(notice);
                                     cx.notify();
                                 });
                             })
@@ -183,13 +263,12 @@ impl RevealApp {
     }
 
     fn render_keys_tab(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.settings.as_ref().expect("settings open");
-        let capturing = state.capturing.clone();
+        let capturing = self.state.capturing.clone();
         let rows: Vec<(Action, Vec<Binding>)> = ALL_ACTIONS
             .iter()
             .map(|action| {
                 let keys: Vec<Binding> =
-                    state.bindings.keys_for(*action).into_iter().cloned().collect();
+                    self.state.bindings.keys_for(*action).into_iter().cloned().collect();
                 (*action, keys)
             })
             .collect();
@@ -201,11 +280,12 @@ impl RevealApp {
                     action_label(target.action)
                 )
             }
-            None => match state.displaced {
+            None => match self.state.displaced {
                 Some(other) => {
                     format!("Rebound. \u{201c}{}\u{201d} lost that shortcut.", action_label(other))
                 }
-                None => state
+                None => self
+                    .state
                     .notice
                     .clone()
                     .unwrap_or_else(|| "Click a shortcut to change it.".to_owned()),
@@ -253,16 +333,12 @@ impl RevealApp {
                                         .child("\u{00d7}")
                                         .occlude()
                                         .on_click(cx.listener(move |this, _e, _w, cx| {
-                                            if let Some(state) = this.settings.as_mut() {
-                                                state.remove_binding(&for_remove);
-                                            }
-                                            cx.notify();
+                                            this.state.remove_binding(&for_remove);
+                                            this.preview(cx);
                                         })),
                                 )
                                 .on_click(cx.listener(move |this, _e, _w, cx| {
-                                    if let Some(state) = this.settings.as_mut() {
-                                        state.begin_recapture(action, for_click.clone());
-                                    }
+                                    this.state.begin_recapture(action, for_click.clone());
                                     cx.notify();
                                 }))
                                 .into_any_element(),
@@ -271,7 +347,7 @@ impl RevealApp {
                     if keys.is_empty() && !adding {
                         chips.push(
                             div()
-                                .h(px(20.))
+                                .h(px(24.))
                                 .flex()
                                 .items_center()
                                 .text_color(ui::color(p.text_muted))
@@ -283,9 +359,7 @@ impl RevealApp {
                         ui::chip(("add-bind", action as usize), p, adding)
                             .child(if adding { "Press a key\u{2026}" } else { "+" })
                             .on_click(cx.listener(move |this, _e, _w, cx| {
-                                if let Some(state) = this.settings.as_mut() {
-                                    state.begin_capture(action);
-                                }
+                                this.state.begin_capture(action);
                                 cx.notify();
                             }))
                             .into_any_element(),
@@ -313,30 +387,27 @@ impl RevealApp {
             .flex_shrink_0()
             .items_center()
             .gap_2()
-            .px_3()
+            .px_4()
             .py_2()
             .border_t_1()
             .border_color(ui::color(p.border_variant))
             .child(ui::toast_button("settings-reset", p, "Reset shortcuts", false).on_click(
                 cx.listener(|this, _e, _w, cx| {
-                    if let Some(state) = this.settings.as_mut() {
-                        state.reset_bindings();
-                    }
-                    cx.notify();
+                    this.state.reset_bindings();
+                    this.preview(cx);
                 }),
             ))
             .child(div().flex_grow(1.))
             .child(ui::toast_button("settings-cancel", p, "Cancel", false).on_click(cx.listener(
-                |this, _e, _w, cx| {
-                    this.close_settings();
-                    cx.notify();
+                |_this, _e, window, _cx| {
+                    window.remove_window();
                 },
             )))
             .child(
                 ui::toast_button("settings-save", p, "Save", true)
                     .when(!dirty, |s| s.opacity(0.5))
                     .on_click(cx.listener(|this, _e, _w, cx| {
-                        this.save_settings();
+                        this.save(cx);
                         cx.notify();
                     })),
             )
@@ -351,7 +422,7 @@ fn toggle_row(
     field: ToggleField,
     config: &reveal::config::Configuration,
     p: Palette,
-    cx: &mut Context<RevealApp>,
+    cx: &mut Context<SettingsWindow>,
 ) -> gpui::AnyElement {
     let value = field.get(config);
     let enabled = field.enabled(config);
@@ -374,10 +445,8 @@ fn toggle_row(
                 .min_w(px(48.))
                 .child(if value { "On" } else { "Off" })
                 .on_click(cx.listener(move |this, _e, _w, cx| {
-                    if let Some(state) = this.settings.as_mut() {
-                        state.toggle(field);
-                    }
-                    cx.notify();
+                    this.state.toggle(field);
+                    this.preview(cx);
                 }))
                 .into_any_element()
         } else {

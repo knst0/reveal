@@ -22,14 +22,47 @@ impl Default for Title {
 #[serde(default)]
 pub struct ConfigWindow {
     pub dark: bool,
-    pub show_bottom_bar: bool,
     pub antialias: bool,
     pub start_fullscreen: bool,
+    pub ui_scale: UiScale,
 }
 
 impl Default for ConfigWindow {
     fn default() -> Self {
-        Self { dark: true, show_bottom_bar: true, antialias: true, start_fullscreen: false }
+        Self { dark: true, antialias: true, start_fullscreen: false, ui_scale: UiScale::default() }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UiScale {
+    Compact,
+    #[default]
+    Normal,
+    Large,
+    Larger,
+}
+
+pub const UI_SCALES: &[UiScale] =
+    &[UiScale::Compact, UiScale::Normal, UiScale::Large, UiScale::Larger];
+
+impl UiScale {
+    pub fn factor(self) -> f32 {
+        match self {
+            Self::Compact => 0.875,
+            Self::Normal => 1.0,
+            Self::Large => 1.25,
+            Self::Larger => 1.5,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Compact => "88%",
+            Self::Normal => "100%",
+            Self::Large => "125%",
+            Self::Larger => "150%",
+        }
     }
 }
 

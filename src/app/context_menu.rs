@@ -97,20 +97,11 @@ impl RevealApp {
                         })),
                 )
                 .child(
-                    MenuItem::new("cm-status", "Toggle Status Bar")
-                        .keybinding(self.keys_for(Action::ToggleBottomBar))
-                        .render(p)
-                        .on_click(cx.listener(move |this, _e, window, cx| {
-                            this.context_menu = None;
-                            this.run(Action::ToggleBottomBar, window, cx);
-                        })),
-                )
-                .child(
                     MenuItem::new("cm-settings", "Settings\u{2026}")
                         .keybinding(self.keys_for(Action::Settings))
                         .render(p)
                         .on_click(cx.listener(|this, _e, _window, cx| {
-                            this.open_settings();
+                            this.open_settings(cx);
                             cx.notify();
                         })),
                 )

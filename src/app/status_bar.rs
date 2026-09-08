@@ -3,6 +3,8 @@ use gpui::{
     Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
     div, px,
 };
+use reveal::icons::Icon;
+use reveal::input::Action;
 use reveal::render::FitMode;
 use reveal::ui::{self, MenuItem, Palette};
 
@@ -28,6 +30,28 @@ impl RevealApp {
             )
             .child(
                 div()
+                    .flex()
+                    .items_center()
+                    .gap_px()
+                    .child(self.toolbar_button(
+                        "sb-zoom-out",
+                        Icon::Minus,
+                        Action::ZoomOut,
+                        false,
+                        p,
+                        cx,
+                    ))
+                    .child(self.toolbar_button(
+                        "sb-zoom-in",
+                        Icon::Plus,
+                        Action::ZoomIn,
+                        false,
+                        p,
+                        cx,
+                    )),
+            )
+            .child(
+                div()
                     .id("zoom")
                     .relative()
                     .child(
@@ -39,7 +63,7 @@ impl RevealApp {
                             })),
                     )
                     .children(self.zoom_menu_open.then(|| {
-                        div().absolute().bottom(px(28.)).right_0().child(
+                        div().absolute().bottom(px(32.)).right_0().child(
                             ui::menu_surface(p)
                                 .occlude()
                                 .min_w(px(160.))

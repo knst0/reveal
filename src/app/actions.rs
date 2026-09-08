@@ -53,12 +53,11 @@ impl RevealApp {
             }
             Action::ToggleAntialias => self.viewer.toggle_antialias(),
             Action::ToggleTheme => self.theme = self.theme.toggled(),
-            Action::ToggleBottomBar => self.show_bottom_bar = !self.show_bottom_bar,
             Action::Settings => {
-                if self.settings.is_some() {
-                    self.close_settings();
+                if self.settings_window.is_some() {
+                    self.close_settings(cx);
                 } else {
-                    self.open_settings();
+                    self.open_settings(cx);
                 }
             }
             Action::Escape => {
@@ -66,8 +65,6 @@ impl RevealApp {
                     self.context_menu = None;
                 } else if self.zoom_menu_open {
                     self.zoom_menu_open = false;
-                } else if self.settings.is_some() {
-                    self.close_settings();
                 } else {
                     self.viewer.playback.set_state(PlaybackState::Paused);
                 }
@@ -130,22 +127,9 @@ impl RevealApp {
             shift: event.keystroke.modifiers.shift,
         };
 
-        if let Some(state) = self.settings.as_mut()
-            && state.capturing.is_some()
-        {
-            if state.capture_key(&event.keystroke.key, modifiers) {
-                cx.notify();
-            }
-            return;
-        }
-
         let Some(action) = self.bindings.action_for(&event.keystroke.key, modifiers) else {
             return;
         };
-
-        if self.settings.is_some() && !matches!(action, Action::Escape | Action::Settings) {
-            return;
-        }
 
         let centre = (self.viewer.viewport.0 / 2.0, self.viewer.viewport.1 / 2.0);
         if self.apply_action(action, centre, window, cx) {

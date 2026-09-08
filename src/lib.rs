@@ -7,6 +7,7 @@ pub mod dialog;
 pub mod directory;
 pub mod drop;
 pub mod formats;
+pub mod icons;
 pub mod input;
 pub mod panic_report;
 pub mod playback;

@@ -34,7 +34,6 @@ pub enum Action {
     ToggleFullscreen,
     ToggleAntialias,
     ToggleTheme,
-    ToggleBottomBar,
     Settings,
     Escape,
 }
@@ -64,7 +63,6 @@ impl Action {
             Action::ToggleFullscreen => "toggle_fullscreen",
             Action::ToggleAntialias => "toggle_antialias",
             Action::ToggleTheme => "toggle_theme",
-            Action::ToggleBottomBar => "toggle_bottom_bar",
             Action::Settings => "settings",
             Action::Escape => "escape",
         }
@@ -98,7 +96,6 @@ pub const ALL_ACTIONS: &[Action] = &[
     Action::ToggleFullscreen,
     Action::ToggleAntialias,
     Action::ToggleTheme,
-    Action::ToggleBottomBar,
     Action::Settings,
     Action::Escape,
 ];
@@ -267,7 +264,6 @@ pub const DEFAULT_BINDINGS: &[(Action, &[&str])] = &[
     (Action::ToggleFullscreen, &["f11", "enter"]),
     (Action::ToggleAntialias, &["s"]),
     (Action::ToggleTheme, &["t"]),
-    (Action::ToggleBottomBar, &["b"]),
     (Action::Settings, &["h", "f1"]),
     (Action::Escape, &["escape"]),
 ];
