@@ -2,7 +2,7 @@
 name = "reveal"
 version = "0.4.2"
 edition = "2024"
-description = "A fast image viewer"
+description = "A fast image viewer, built with Rust and GPUI."
 license = "MIT"
 repository = "https://github.com/knst0/reveal"
 readme = "README.md"
@@ -81,6 +81,7 @@ zenavif-parse = "0.6.2"
 arboard = { version = "3.6", features = ["wayland-data-control"] }
 
 [build-dependencies]
+toml = "0.8"
 winres = "0.1.12"
 
 [dev-dependencies]

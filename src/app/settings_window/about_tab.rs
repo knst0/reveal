@@ -67,10 +67,5 @@ impl SettingsWindow {
                     cx,
                 )
             }))
-            .child(div().text_color(ui::color(p.text_muted)).child(format!(
-                "{} itself is distributed under {}.",
-                about::NAME,
-                about::LICENSE
-            )))
     }
 }

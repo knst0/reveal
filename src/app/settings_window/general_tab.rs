@@ -109,7 +109,6 @@ impl SettingsWindow {
                         }),
                     )),
             )
-            .child(div().text_color(ui::color(p.text_muted)).child(config_location_hint()))
     }
 }
 
@@ -151,13 +150,6 @@ fn toggle_row(
                 .into_any_element()
         })
         .into_any_element()
-}
-
-fn config_location_hint() -> String {
-    match reveal::config::config_path() {
-        Some(path) => format!("Saved to {}", path.display()),
-        None => "Configuration directory unavailable.".to_owned(),
-    }
 }
 
 fn associations_hint() -> &'static str {
