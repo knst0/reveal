@@ -9,6 +9,7 @@ mod update_toast;
 
 use std::time::{Duration, Instant};
 
+use futures::StreamExt;
 use gpui::{
     App, AppContext, Bounds, Context, ExternalPaths, InteractiveElement, IntoElement, MouseButton,
     MouseDownEvent, ParentElement, Render, Styled, Subscription, Window, WindowBounds,
@@ -25,6 +26,13 @@ use reveal::viewer::Viewer;
 
 use labels::title_for;
 use settings_window::{SettingsWindow, WINDOW_HEIGHT, WINDOW_WIDTH};
+
+enum Wake {
+    Cache(reveal::cache::LoadResult),
+    Scan(u64, std::io::Result<reveal::directory::Directory>),
+    DropPoll,
+    Refresh,
+}
 
 pub struct RevealApp {
     pub confirm_delete: Option<std::path::PathBuf>,
@@ -46,6 +54,11 @@ pub struct RevealApp {
     pub update_busy: bool,
     pub drop_hover: bool,
     pub dialog_open: bool,
+    wake: Option<futures::channel::mpsc::UnboundedSender<Wake>>,
+    resize_generation: u64,
+    resize_settling: bool,
+    timer_active: bool,
+    scan_forwarded: u64,
 }
 
 pub struct AppInit {
@@ -79,6 +92,11 @@ impl RevealApp {
             update_busy: false,
             drop_hover: false,
             dialog_open: false,
+            wake: None,
+            resize_generation: 0,
+            resize_settling: false,
+            timer_active: false,
+            scan_forwarded: 0,
             theme,
             viewer,
         };
@@ -170,26 +188,66 @@ impl RevealApp {
         title_for(self.viewer.current_path())
     }
 
-    pub fn start_ticker(&self, cx: &mut Context<Self>) {
+    pub fn start_ticker(&mut self, cx: &mut Context<Self>) {
+        let (tx, mut rx) = futures::channel::mpsc::unbounded::<Wake>();
+        self.wake = Some(tx.clone());
+
+        {
+            let tx = tx.clone();
+            cx.background_executor()
+                .spawn_dedicated(move |_| async move {
+                    loop {
+                        std::thread::sleep(Duration::from_millis(250));
+                        if tx.unbounded_send(Wake::DropPoll).is_err() {
+                            break;
+                        }
+                    }
+                })
+                .detach();
+        }
+
+        {
+            let loader = self.viewer.cache.loader_handle();
+            let tx = tx.clone();
+            cx.background_executor()
+                .spawn_dedicated(move |_| async move {
+                    while let Some(result) = loader.recv() {
+                        if tx.unbounded_send(Wake::Cache(result)).is_err() {
+                            break;
+                        }
+                    }
+                })
+                .detach();
+        }
+
+        self.sync_scan_forwarder(cx);
+
         cx.spawn(async move |this, cx| {
-            let mut interval = Duration::from_millis(16);
             loop {
-                cx.background_executor().timer(interval).await;
+                let timeout = this
+                    .update(cx, |this, _| this.viewer.next_time_based_delay())
+                    .ok()
+                    .flatten();
+                let fired = match timeout {
+                    Some(duration) => {
+                        let next = rx.next();
+                        let timer = cx.background_executor().timer(duration);
+                        futures::pin_mut!(next, timer);
+                        match futures::future::select(next, timer).await {
+                            futures::future::Either::Left((wake, _)) => wake,
+                            futures::future::Either::Right((_, _)) => None,
+                        }
+                    }
+                    None => rx.next().await,
+                };
                 let alive = this
-                    .update(cx, |this, cx| {
-                        let requested = reveal::drop::take_requested();
-                        if !requested.is_empty() {
-                            this.open_dropped(&requested);
-                            cx.notify();
+                    .update(cx, |this, cx| match fired {
+                        Some(wake) => this.handle_wake(wake, cx),
+                        None => {
+                            if this.viewer.tick_playback(Instant::now()) {
+                                cx.notify();
+                            }
                         }
-                        if this.viewer.tick(Instant::now()) {
-                            cx.notify();
-                        }
-                        interval = if this.viewer.needs_ticking() {
-                            Duration::from_millis(16)
-                        } else {
-                            Duration::from_millis(100)
-                        };
                     })
                     .is_ok();
                 if !alive {
@@ -198,6 +256,94 @@ impl RevealApp {
             }
         })
         .detach();
+    }
+
+    fn handle_wake(&mut self, wake: Wake, cx: &mut Context<Self>) {
+        match wake {
+            Wake::Cache(result) => {
+                if self.viewer.apply_load(result) {
+                    cx.notify();
+                }
+            }
+            Wake::Scan(generation, result) => {
+                if self.viewer.apply_scan(generation, result) {
+                    cx.notify();
+                }
+            }
+            Wake::DropPoll => {
+                let requested = reveal::drop::take_requested();
+                if !requested.is_empty() {
+                    self.open_dropped(&requested);
+                    cx.notify();
+                }
+            }
+            Wake::Refresh => {
+                if self.viewer.reprepare_if_pending() {
+                    cx.notify();
+                }
+            }
+        }
+        if self.viewer.tick_playback(Instant::now()) {
+            cx.notify();
+        }
+    }
+
+    fn wake(&self) {
+        if let Some(tx) = self.wake.as_ref() {
+            let _ = tx.unbounded_send(Wake::Refresh);
+        }
+    }
+
+    fn schedule_reprepare(&mut self, cx: &mut Context<Self>) {
+        self.resize_generation = self.resize_generation.wrapping_add(1);
+        if self.resize_settling {
+            return;
+        }
+        self.resize_settling = true;
+        let mut seen = self.resize_generation;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_millis(120)).await;
+                let current = this.update(cx, |this, _| this.resize_generation).unwrap_or(seen);
+                if current == seen {
+                    break;
+                }
+                seen = current;
+            }
+            this.update(cx, |this, _| {
+                this.resize_settling = false;
+                this.wake();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn start_scan_forwarder(&mut self, cx: &mut Context<Self>) {
+        let Some((receiver, generation)) = self.viewer.scan_receiver() else {
+            return;
+        };
+        let Some(tx) = self.wake.clone() else {
+            return;
+        };
+        cx.background_executor()
+            .spawn_dedicated(move |_| async move {
+                while let Ok(result) = receiver.recv() {
+                    if tx.unbounded_send(Wake::Scan(generation, result)).is_err() {
+                        break;
+                    }
+                }
+            })
+            .detach();
+    }
+
+    fn sync_scan_forwarder(&mut self, cx: &mut Context<Self>) {
+        let generation = self.viewer.scan_generation();
+        if generation == self.scan_forwarded {
+            return;
+        }
+        self.scan_forwarded = generation;
+        self.start_scan_forwarder(cx);
     }
 }
 
@@ -208,13 +354,24 @@ impl Render for RevealApp {
             self.drop_hover = false;
         }
         self.record_window_geometry(window);
+        self.sync_scan_forwarder(cx);
+        let timer_active = self.viewer.next_time_based_delay().is_some();
+        if timer_active != self.timer_active {
+            self.timer_active = timer_active;
+            self.wake();
+        }
 
         let scale = self.config.window.ui_scale.factor();
         window.set_rem_size(px(ui::BASE_REM * scale));
 
         let chrome = (ui::TOOLBAR_HEIGHT + ui::STATUS_BAR_HEIGHT) * scale;
-        self.viewer.set_viewport(f32::from(size.width), (f32::from(size.height) - chrome).max(1.0));
-        self.viewer.set_scale_factor(window.scale_factor());
+        let resized = self
+            .viewer
+            .set_viewport(f32::from(size.width), (f32::from(size.height) - chrome).max(1.0));
+        let scaled = self.viewer.set_scale_factor(window.scale_factor());
+        if resized || scaled {
+            self.schedule_reprepare(cx);
+        }
 
         let title = self.compute_title();
         if title != self.window_title {

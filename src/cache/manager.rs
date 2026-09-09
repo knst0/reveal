@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::{CacheStore, CachedImage, NavigationDirection, RequestKind, DEFAULT_CAPACITY_BYTES, Loader, RequestId};
+use super::{
+    CacheStore, CachedImage, DEFAULT_CAPACITY_BYTES, LoadResult, Loader, NavigationDirection,
+    RequestId, RequestKind,
+};
 use crate::decode::DecodeError;
 use crate::directory::Directory;
 
@@ -18,7 +21,7 @@ pub fn prefetch_offsets(radius: isize) -> Vec<isize> {
 
 pub struct ImageCache {
     store: CacheStore,
-    loader: Loader,
+    loader: std::sync::Arc<Loader>,
     inflight: Vec<(PathBuf, RequestId)>,
     target: (u32, u32),
     resample: crate::render::Resample,
@@ -41,7 +44,7 @@ impl ImageCache {
     pub fn new(capacity_bytes: usize, threads: usize) -> Self {
         Self {
             store: CacheStore::new(capacity_bytes),
-            loader: Loader::new(threads),
+            loader: std::sync::Arc::new(Loader::new(threads)),
             inflight: Vec::new(),
             target: (0, 0),
             resample: crate::render::Resample::Filtered,
@@ -67,6 +70,10 @@ impl ImageCache {
         &self.store
     }
 
+    pub fn loader_handle(&self) -> std::sync::Arc<Loader> {
+        std::sync::Arc::clone(&self.loader)
+    }
+
     pub fn get(&self, path: &Path) -> Option<&CachedImage> {
         self.store.get(path)
     }
@@ -83,15 +90,15 @@ impl ImageCache {
         if self.store.contains(path) || self.inflight.iter().any(|(p, _)| p == path) {
             return;
         }
-        if kind == RequestKind::Prefetch {
-            if let Some(len) = self.file_size(path, size) {
-                let remaining =
-                    self.store.capacity_bytes().saturating_sub(self.store.used_bytes());
-                if len as usize > remaining {
-                    return;
-                }
+        if kind == RequestKind::Prefetch
+            && let Some(len) = self.file_size(path, size)
+        {
+            let remaining = self.store.capacity_bytes().saturating_sub(self.store.used_bytes());
+            if len as usize > remaining {
+                return;
             }
         }
+
         let id = self.loader.request(path.to_path_buf(), index, self.target, self.resample);
         self.inflight.push((path.to_path_buf(), id));
     }
@@ -160,17 +167,26 @@ impl ImageCache {
     pub fn pump(&mut self, current_index: usize) -> Vec<(PathBuf, Result<(), DecodeError>)> {
         let mut events = Vec::new();
         while let Some(result) = self.loader.try_recv() {
-            self.inflight.retain(|(_, id)| *id != result.id);
-            match result.outcome {
-                Ok(image) => {
-                    let path = image.path.clone();
-                    self.store.insert(image, result.index, current_index);
-                    events.push((path, Ok(())));
-                }
-                Err(e) => events.push((result.path, Err(e))),
-            }
+            events.push(self.absorb(result, current_index));
         }
         events
+    }
+
+    pub fn absorb(
+        &mut self,
+        result: LoadResult,
+        current_index: usize,
+    ) -> (PathBuf, Result<(), DecodeError>) {
+        let LoadResult { id, index, path, outcome } = result;
+        self.inflight.retain(|(_, request)| *request != id);
+        match outcome {
+            Ok(image) => {
+                let path = image.path.clone();
+                self.store.insert(image, index, current_index);
+                (path, Ok(()))
+            }
+            Err(e) => (path, Err(e)),
+        }
     }
 
     pub fn drain_one(
@@ -181,15 +197,7 @@ impl ImageCache {
             return None;
         }
         let result = self.loader.recv()?;
-        self.inflight.retain(|(_, id)| *id != result.id);
-        match result.outcome {
-            Ok(image) => {
-                let path = image.path.clone();
-                self.store.insert(image, result.index, current_index);
-                Some((path, Ok(())))
-            }
-            Err(e) => Some((result.path, Err(e))),
-        }
+        Some(self.absorb(result, current_index))
     }
 
     pub fn block_on(&mut self, path: &Path, index: usize) -> Result<&CachedImage, DecodeError> {

@@ -229,13 +229,13 @@ fn index_of(entries: &[PathBuf], path: &Path) -> Option<usize> {
 
 pub struct PendingScan {
     target: Option<PathBuf>,
-    receiver: std::sync::mpsc::Receiver<io::Result<Directory>>,
+    receiver: crossbeam_channel::Receiver<io::Result<Directory>>,
 }
 
 impl PendingScan {
     pub fn spawn(path: &Path) -> Self {
         let (_, file) = split_target(path);
-        let (sender, receiver) = std::sync::mpsc::channel();
+        let (sender, receiver) = crossbeam_channel::unbounded();
         let request = path.to_path_buf();
         std::thread::Builder::new()
             .name("reveal-scan".into())
@@ -253,11 +253,15 @@ impl PendingScan {
     pub fn take(&mut self) -> Option<io::Result<Directory>> {
         match self.receiver.try_recv() {
             Ok(result) => Some(result),
-            Err(std::sync::mpsc::TryRecvError::Empty) => None,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            Err(crossbeam_channel::TryRecvError::Empty) => None,
+            Err(crossbeam_channel::TryRecvError::Disconnected) => {
                 Some(Err(io::Error::other("directory scan failed")))
             }
         }
+    }
+
+    pub fn results(&self) -> crossbeam_channel::Receiver<io::Result<Directory>> {
+        self.receiver.clone()
     }
 
     pub fn wait(&mut self) -> io::Result<Directory> {

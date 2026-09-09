@@ -40,11 +40,13 @@ pub struct Viewer {
     pub viewport: (f32, f32),
     pub scale_factor: f32,
     resample: Resample,
+    reprepare_pending: bool,
     current: Option<Prepared>,
     status: Option<String>,
     prepared: std::collections::HashMap<PathBuf, Prepared>,
     paused_paths: std::collections::HashSet<PathBuf>,
     pending: Option<PathBuf>,
+    scan_generation: u64,
     scan: Option<crate::directory::PendingScan>,
 }
 
@@ -81,11 +83,13 @@ impl Viewer {
             viewport: (0.0, 0.0),
             scale_factor: 1.0,
             resample: Resample::Filtered,
+            reprepare_pending: false,
             current: None,
             status: None,
             prepared: std::collections::HashMap::new(),
             paused_paths: std::collections::HashSet::new(),
             pending: None,
+            scan_generation: 0,
             scan: None,
         }
     }
@@ -155,14 +159,18 @@ impl Viewer {
         current.magnified = Some(Magnified { factor, crop, render });
     }
 
-    pub fn set_viewport(&mut self, width: f32, height: f32) {
+    pub fn set_viewport(&mut self, width: f32, height: f32) -> bool {
         let changed = (self.viewport.0 - width).abs() >= f32::EPSILON
             || (self.viewport.1 - height).abs() >= f32::EPSILON;
         self.viewport = (width, height);
         self.sync_target_size();
         if changed {
-            self.reprepare_current();
+            self.reprepare_pending = true;
+            if self.current.is_some() {
+                self.apply_current_fit();
+            }
         }
+        changed
     }
 
     fn reprepare_current(&mut self) {
@@ -193,6 +201,15 @@ impl Viewer {
         }
     }
 
+    pub fn reprepare_if_pending(&mut self) -> bool {
+        if !self.reprepare_pending {
+            return false;
+        }
+        self.reprepare_pending = false;
+        self.reprepare_current();
+        true
+    }
+
     fn sync_target_size(&mut self) {
         let dpr = self.scale_factor.max(1.0);
         self.cache.set_target_size(
@@ -201,13 +218,17 @@ impl Viewer {
         );
     }
 
-    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+    pub fn set_scale_factor(&mut self, scale_factor: f32) -> bool {
         if (scale_factor - self.scale_factor).abs() < f32::EPSILON {
-            return;
+            return false;
         }
         self.scale_factor = scale_factor;
         self.sync_target_size();
-        self.reprepare_current();
+        self.reprepare_pending = true;
+        if self.current.is_some() {
+            self.apply_current_fit();
+        }
+        true
     }
 
     pub fn current_source_size(&self) -> (u32, u32) {
@@ -220,6 +241,7 @@ impl Viewer {
         self.pending = None;
         self.status = None;
         self.current = None;
+        self.scan_generation = self.scan_generation.wrapping_add(1);
         let scan = crate::directory::PendingScan::spawn(path);
         match scan.target() {
             Some(target) => {
@@ -240,6 +262,24 @@ impl Viewer {
 
     pub fn wait_for_scan(&mut self) {
         self.adopt_scan(true);
+    }
+
+    pub fn scan_generation(&self) -> u64 {
+        self.scan_generation
+    }
+
+    pub fn scan_receiver(
+        &self,
+    ) -> Option<(crossbeam_channel::Receiver<std::io::Result<Directory>>, u64)> {
+        self.scan.as_ref().map(|scan| (scan.results(), self.scan_generation))
+    }
+
+    pub fn apply_scan(&mut self, generation: u64, result: std::io::Result<Directory>) -> bool {
+        if generation != self.scan_generation {
+            return false;
+        }
+        self.scan = None;
+        self.adopt_scan_result(result)
     }
 
     fn realign_pending(&mut self, scanned: &Directory) -> Option<PathBuf> {
@@ -264,6 +304,10 @@ impl Viewer {
             return false;
         };
         self.scan = None;
+        self.adopt_scan_result(result)
+    }
+
+    fn adopt_scan_result(&mut self, result: std::io::Result<Directory>) -> bool {
         let mut scanned = match result {
             Ok(scanned) => scanned,
             Err(e) => {
@@ -429,7 +473,32 @@ impl Viewer {
         }
     }
 
+    fn neighbours_settled(&self) -> bool {
+        for offset in [1isize, -1] {
+            let Some(index) = self.directory.offset_index(offset) else {
+                continue;
+            };
+            let Some(path) = self.directory.path_at(index) else {
+                continue;
+            };
+            if !self.prepared.get(path).is_some_and(|p| p.resample == self.resample) {
+                return false;
+            }
+        }
+        self.prepared.keys().all(|key| {
+            [1isize, -1, 0].iter().any(|offset| {
+                self.directory
+                    .offset_index(*offset)
+                    .and_then(|index| self.directory.path_at(index))
+                    == Some(key.as_path())
+            })
+        })
+    }
+
     pub fn prepare_neighbours(&mut self) {
+        if self.neighbours_settled() {
+            return;
+        }
         for offset in [1isize, -1] {
             let Some(index) = self.directory.offset_index(offset) else {
                 continue;
@@ -605,8 +674,12 @@ impl Viewer {
         self.transform.zoom_at(factor, cursor, self.viewport);
     }
 
-    pub fn tick(&mut self, now: Instant) -> bool {
-        let mut redraw = self.adopt_scan(false);
+    pub fn tick_scan(&mut self) -> bool {
+        self.adopt_scan(false)
+    }
+
+    pub fn tick_cache(&mut self) -> bool {
+        let mut redraw = false;
         for (path, outcome) in self.cache.pump(self.directory.current_index()) {
             redraw = true;
             self.absorb(&path, outcome);
@@ -615,6 +688,11 @@ impl Viewer {
             redraw = true;
         }
         self.prepare_neighbours();
+        redraw
+    }
+
+    pub fn tick_playback(&mut self, now: Instant) -> bool {
+        let mut redraw = false;
         if let Some(current) = &self.current {
             let output = current.output.clone();
             if self.playback.advance(&output.decoded, now) {
@@ -631,6 +709,22 @@ impl Viewer {
         redraw
     }
 
+    pub fn tick(&mut self, now: Instant) -> bool {
+        let mut redraw = self.tick_scan();
+        redraw |= self.tick_cache();
+        redraw |= self.reprepare_if_pending();
+        redraw |= self.tick_playback(now);
+        redraw
+    }
+
+    pub fn apply_load(&mut self, result: crate::cache::LoadResult) -> bool {
+        let index = self.directory.current_index();
+        let (path, outcome) = self.cache.absorb(result, index);
+        self.absorb(&path, outcome);
+        self.tick_cache();
+        true
+    }
+
     pub fn needs_ticking(&self) -> bool {
         if self.scan_pending() || self.pending.is_some() || self.cache.inflight_len() > 0 {
             return true;
@@ -639,6 +733,21 @@ impl Viewer {
             return true;
         }
         self.is_animated() && self.playback.state == PlaybackState::Playing
+    }
+
+    pub fn next_time_based_delay(&self) -> Option<std::time::Duration> {
+        if matches!(self.playback.state, PlaybackState::Present | PlaybackState::PresentRandom) {
+            return Some(self.playback.present_interval());
+        }
+        if self.is_animated() && self.playback.state == PlaybackState::Playing {
+            let frame = self.playback.frame_index();
+            return Some(
+                self.current_output()
+                    .and_then(|output| Playback::frame_delay(&output.decoded, frame))
+                    .unwrap_or(std::time::Duration::from_millis(16)),
+            );
+        }
+        None
     }
 
     pub fn frame_index(&self) -> usize {

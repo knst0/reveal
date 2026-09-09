@@ -199,6 +199,63 @@ fn opening_a_directory_shows_its_first_file() {
 }
 
 #[test]
+fn deferred_reprepare_coalesces_viewport_changes() {
+    let dir = large_fixture("coalesce", 1920, 1080);
+    let mut v = Viewer::new();
+    v.set_viewport(640.0, 400.0);
+    v.open(&dir.join("big.png")).unwrap();
+    v.settle();
+    let initial = v.current_intrinsic();
+
+    v.set_viewport(500.0, 300.0);
+    v.set_viewport(700.0, 500.0);
+    v.set_viewport(900.0, 600.0);
+    assert_eq!(
+        v.current_intrinsic(),
+        initial,
+        "viewport changes must not reprepare until the deferred call"
+    );
+
+    assert!(v.reprepare_if_pending());
+    assert!(v.current_intrinsic().0 > initial.0, "the final viewport is larger");
+
+    let mut reference = Viewer::new();
+    reference.set_viewport(900.0, 600.0);
+    reference.open(&dir.join("big.png")).unwrap();
+    reference.settle();
+    assert_eq!(
+        v.current_intrinsic(),
+        reference.current_intrinsic(),
+        "coalesced reprepare must land on the final viewport"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn deferred_reprepare_preserves_free_zoom_ratio() {
+    let dir = large_fixture("freezoom", 1920, 1080);
+    let mut v = Viewer::new();
+    v.set_viewport(640.0, 400.0);
+    v.open(&dir.join("big.png")).unwrap();
+    v.settle();
+
+    v.pan((25.0, -10.0));
+    assert_eq!(v.transform.fit, FitMode::Free);
+    v.zoom_at(1.5, (320.0, 200.0));
+    let before = v.current_intrinsic().0 * v.transform.zoom;
+
+    v.set_viewport(900.0, 600.0);
+    v.reprepare_if_pending();
+
+    let after = v.current_intrinsic().0 * v.transform.zoom;
+    assert!(
+        (before - after).abs() < 1.0,
+        "free zoom must survive a deferred reprepare, {before} vs {after}"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn open_returns_before_the_scan_and_the_first_decode() {
     let dir = fixture("fastopen", 400);
     let mut v = Viewer::new();

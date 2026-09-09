@@ -56,6 +56,10 @@ impl Playback {
         self.present_interval = interval;
     }
 
+    pub fn present_interval(&self) -> Duration {
+        self.present_interval
+    }
+
     pub fn frame_delay(decoded: &Decoded, frame: usize) -> Option<Duration> {
         match decoded {
             Decoded::Still(_) => None,

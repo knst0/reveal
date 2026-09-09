@@ -151,7 +151,7 @@ impl CacheStore {
                 (keep_cost(e.index, current_index, self.direction), e.image.path.clone(), e.image.bytes)
             })
             .collect();
-        candidates.sort_by(|a, b| b.0.cmp(&a.0));
+        candidates.sort_by_key(|b| std::cmp::Reverse(b.0));
         while self.used_bytes > self.capacity_bytes {
             let Some((_, path, bytes)) = candidates.pop() else {
                 break;
