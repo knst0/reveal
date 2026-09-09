@@ -1,8 +1,8 @@
-use reveal::decode::DecodedImage;
+use reveal::decode::{DecodedImage, Orientation};
 use reveal::render::{
-    FitMode, Resample, ViewTransform, downscale_to_display, downscale_to_display_with,
-    fit_factor_to_budget, magnify_factor, magnify_nearest, magnify_nearest_crop, needs_downscale,
-    to_bgra, to_render_image,
+    ChannelOrder, FitMode, Resample, ViewTransform, apply_orientation, downscale_to_display,
+    downscale_to_display_with, fit_factor_to_budget, magnify_factor, magnify_nearest,
+    magnify_nearest_crop, needs_downscale, orient_in_order, to_bgra, to_render_image,
 };
 
 #[test]
@@ -108,6 +108,33 @@ fn magnify_nearest_replicates_pixels_into_hard_blocks() {
         }
     }
     assert_eq!(magnify_nearest(&src, 1).rgba, src.rgba);
+}
+
+#[test]
+fn fused_bgra_orientation_matches_orient_then_swap_for_all_arms() {
+    let src = DecodedImage {
+        rgba: vec![
+            10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255, 100, 110, 120, 255, 130, 140, 150,
+            255, 160, 170, 180, 255,
+        ],
+        width: 3,
+        height: 2,
+    };
+
+    for orientation in
+        [Orientation::Normal, Orientation::Rotate90, Orientation::FlipH, Orientation::FlipV]
+    {
+        let fused = orient_in_order(&src, orientation, ChannelOrder::Bgra);
+        let rgba = apply_orientation(&src, orientation);
+        let two_pass = to_bgra(&rgba);
+        assert_eq!(
+            fused.rgba,
+            *two_pass.as_raw(),
+            "fused BGRA diverged from orient-then-swap for {orientation:?}"
+        );
+        assert_eq!(fused.width, two_pass.width(), "width for {orientation:?}");
+        assert_eq!(fused.height, two_pass.height(), "height for {orientation:?}");
+    }
 }
 
 fn concentric_rings(w: u32, h: u32) -> DecodedImage {
@@ -330,6 +357,14 @@ fn horizontal_flip_mirrors_without_resizing() {
     assert_eq!((out.width, out.height), (4, 2));
     assert_eq!(out.rgba[(3 * 4) as usize], 255, "marker moves to the right edge");
     assert_eq!(out.rgba[0], 0);
+}
+
+#[test]
+fn normal_orientation_fused_bgra_still_swaps() {
+    let src = DecodedImage { rgba: vec![1, 2, 3, 4, 5, 6, 7, 8], width: 2, height: 1 };
+    let fused = orient_in_order(&src, Orientation::Normal, ChannelOrder::Bgra);
+    let expected = to_bgra(&src);
+    assert_eq!(fused.rgba, *expected.as_raw());
 }
 
 #[test]

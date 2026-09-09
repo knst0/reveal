@@ -1,3 +1,8 @@
+//! `DecodedImage.rgba` is always true RGBA; BGRA exists only inside
+//! `gpui::RenderImage` buffers. The clipboard path (`src/actions.rs`) passes
+//! `&image.rgba` directly to `arboard`, which requires RGBA — never store BGRA
+//! in `DecodedImage` or "optimize" the swap out of the display path.
+
 mod element;
 mod transform;
 
@@ -12,11 +17,15 @@ use image::{Delay, Frame, RgbaImage};
 
 use crate::decode::{Decoded, DecodedImage, Orientation};
 
-pub fn to_bgra(image: &DecodedImage) -> RgbaImage {
-    let mut buffer = image.rgba.clone();
+fn rgba_to_bgra(buffer: &mut [u8]) {
     for px in buffer.chunks_exact_mut(4) {
         px.swap(0, 2);
     }
+}
+
+pub fn to_bgra(image: &DecodedImage) -> RgbaImage {
+    let mut buffer = image.rgba.clone();
+    rgba_to_bgra(&mut buffer);
     RgbaImage::from_raw(image.width, image.height, buffer)
         .expect("decoded buffer must match its dimensions")
 }
@@ -27,9 +36,7 @@ pub fn into_render_image_still(image: DecodedImage) -> Arc<RenderImage> {
 
 fn into_bgra(image: DecodedImage) -> RgbaImage {
     let mut buffer = image.rgba;
-    for px in buffer.chunks_exact_mut(4) {
-        px.swap(0, 2);
-    }
+    rgba_to_bgra(&mut buffer);
     RgbaImage::from_raw(image.width, image.height, buffer)
         .expect("decoded buffer must match its dimensions")
 }
@@ -206,10 +213,21 @@ pub fn oriented(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelOrder {
+    Rgba,
+    Bgra,
+}
+
 pub fn apply_orientation(image: &DecodedImage, orientation: Orientation) -> DecodedImage {
-    if orientation == Orientation::Normal {
-        return image.clone();
-    }
+    orient_in_order(image, orientation, ChannelOrder::Rgba)
+}
+
+pub fn orient_in_order(
+    image: &DecodedImage,
+    orientation: Orientation,
+    order: ChannelOrder,
+) -> DecodedImage {
     let (w, h) = (image.width as usize, image.height as usize);
     let (out_w, out_h) = {
         let o = oriented_size((image.width, image.height), orientation);
@@ -220,13 +238,40 @@ pub fn apply_orientation(image: &DecodedImage, orientation: Orientation) -> Deco
     let src = &image.rgba;
     let stride = w * 4;
     let dst_stride = out_w * 4;
+    let swap = order == ChannelOrder::Bgra;
+    let put = |out: &mut [u8], src_px: &[u8]| {
+        let mut px = [src_px[0], src_px[1], src_px[2], src_px[3]];
+        if swap {
+            rgba_to_bgra(&mut px);
+        }
+        out.copy_from_slice(&px);
+    };
+
+    if orientation == Orientation::Normal {
+        if !swap {
+            return image.clone();
+        }
+        for (d, s) in out.chunks_exact_mut(4).zip(src.chunks_exact(4)) {
+            put(d, s);
+        }
+        return DecodedImage { rgba: out, width: image.width, height: image.height };
+    }
 
     match orientation {
-        Orientation::FlipV => {
+        Orientation::FlipV if !swap => {
             for y in 0..h {
                 let s = y * stride;
                 let d = (h - 1 - y) * stride;
                 out[d..d + stride].copy_from_slice(&src[s..s + stride]);
+            }
+        }
+        Orientation::FlipV => {
+            for y in 0..h {
+                let s = y * stride;
+                let d = (h - 1 - y) * stride;
+                for x in 0..w {
+                    put(&mut out[d + x * 4..d + x * 4 + 4], &src[s + x * 4..s + x * 4 + 4]);
+                }
             }
         }
         Orientation::FlipH => {
@@ -235,7 +280,7 @@ pub fn apply_orientation(image: &DecodedImage, orientation: Orientation) -> Deco
                 let drow = &mut out[y * stride..y * stride + stride];
                 for x in 0..w {
                     let d = (w - 1 - x) * 4;
-                    drow[d..d + 4].copy_from_slice(&row[x * 4..x * 4 + 4]);
+                    put(&mut drow[d..d + 4], &row[x * 4..x * 4 + 4]);
                 }
             }
         }
@@ -246,7 +291,7 @@ pub fn apply_orientation(image: &DecodedImage, orientation: Orientation) -> Deco
                 let drow = &mut out[dy * stride..dy * stride + stride];
                 for x in 0..w {
                     let d = (w - 1 - x) * 4;
-                    drow[d..d + 4].copy_from_slice(&row[x * 4..x * 4 + 4]);
+                    put(&mut drow[d..d + 4], &row[x * 4..x * 4 + 4]);
                 }
             }
         }
@@ -262,7 +307,7 @@ pub fn apply_orientation(image: &DecodedImage, orientation: Orientation) -> Deco
                         _ => (x, y),
                     };
                     let d = ny * dst_stride + nx * 4;
-                    out[d..d + 4].copy_from_slice(&row[x * 4..x * 4 + 4]);
+                    put(&mut out[d..d + 4], &row[x * 4..x * 4 + 4]);
                 }
             }
         }
@@ -296,6 +341,11 @@ pub fn oriented_size(size: (u32, u32), orientation: Orientation) -> (u32, u32) {
         | Orientation::Transverse => (size.1, size.0),
         _ => size,
     }
+}
+
+fn bgra_in_place(mut image: DecodedImage) -> DecodedImage {
+    rgba_to_bgra(&mut image.rgba);
+    image
 }
 
 fn unoriented_target(physical: (f32, f32), orientation: Orientation) -> (f32, f32) {
@@ -350,15 +400,11 @@ pub fn prepare_display(
     let source = oriented_size((image.width, image.height), orientation);
     let target = unoriented_target(physical, orientation);
     let scaled = downscaled(image, target, resample);
-    let placed = match oriented(&scaled, orientation) {
-        std::borrow::Cow::Owned(o) => o,
-        std::borrow::Cow::Borrowed(_) => scaled.into_owned(),
+    let placed = match scaled {
+        std::borrow::Cow::Owned(owned) if orientation == Orientation::Normal => bgra_in_place(owned),
+        scaled => orient_in_order(&scaled, orientation, ChannelOrder::Bgra),
     };
-    let mut bgra = placed.rgba;
-    for px in bgra.chunks_exact_mut(4) {
-        px.swap(0, 2);
-    }
-    let buffer = RgbaImage::from_raw(placed.width, placed.height, bgra)
+    let buffer = RgbaImage::from_raw(placed.width, placed.height, placed.rgba)
         .expect("display buffer must match its dimensions");
     let render = Arc::new(RenderImage::new(vec![Frame::new(buffer)]));
     Display { render, width: placed.width, height: placed.height, source, resample }
