@@ -5,6 +5,7 @@ use crate::input::{Action, Binding, Bindings, Modifiers};
 pub enum SettingsTab {
     General,
     Keys,
+    About,
 }
 
 impl SettingsTab {
@@ -12,11 +13,13 @@ impl SettingsTab {
         match self {
             Self::General => "General",
             Self::Keys => "Keyboard",
+            Self::About => "About",
         }
     }
 }
 
-pub const SETTINGS_TABS: &[SettingsTab] = &[SettingsTab::General, SettingsTab::Keys];
+pub const SETTINGS_TABS: &[SettingsTab] =
+    &[SettingsTab::General, SettingsTab::Keys, SettingsTab::About];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToggleField {
