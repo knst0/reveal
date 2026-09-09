@@ -277,3 +277,80 @@ fn open_returns_before_the_scan_and_the_first_decode() {
     assert_eq!(v.directory.path_at(v.directory.current_index()).unwrap(), dir.join("7.png"));
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn open_then_navigate_lands_on_the_expected_path() {
+    let dir = fixture("safety-nav", 4);
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&dir.join("0.png")).unwrap();
+    v.settle();
+    assert_eq!(v.current_path().unwrap(), dir.join("0.png"));
+
+    v.navigate(Navigation::Next);
+    v.settle();
+    assert_eq!(v.current_path().unwrap(), dir.join("1.png"));
+
+    v.navigate(Navigation::Next);
+    v.settle();
+    assert_eq!(v.current_path().unwrap(), dir.join("2.png"));
+
+    v.navigate(Navigation::Prev);
+    v.settle();
+    assert_eq!(v.current_path().unwrap(), dir.join("1.png"));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn set_antialias_preserves_zoom_and_pan() {
+    let dir = fixture("safety-aa", 1);
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&dir.join("0.png")).unwrap();
+    v.settle();
+
+    v.pan((25.0, -10.0));
+    v.zoom_at(1.5, (400.0, 300.0));
+    let before = v.transform;
+
+    v.set_antialias(false);
+
+    assert_eq!(v.transform.fit, before.fit);
+    assert!((v.transform.zoom - before.zoom).abs() < 1e-3, "zoom must survive the toggle");
+    assert!((v.transform.offset.0 - before.offset.0).abs() < 1e-3, "pan x must survive");
+    assert!((v.transform.offset.1 - before.offset.1).abs() < 1e-3, "pan y must survive");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_failed_decode_surfaces_a_status_and_clears_current() {
+    let dir = fixture("safety-fail", 1);
+    let bad = dir.join("broken.png");
+    fs::write(&bad, b"definitely not a png").unwrap();
+
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&bad).unwrap();
+    v.settle();
+
+    assert!(v.status().is_some(), "a decode failure must surface via status()");
+    assert!(v.current_path().is_none(), "a decode failure must clear current");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_late_scan_realigns_to_the_canonical_path() {
+    let dir = fixture("safety-realign", 3);
+    let indirect = dir.join(".").join("1.png");
+
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&indirect).unwrap();
+    v.settle();
+
+    assert_eq!(v.current_path().unwrap(), dir.join("1.png"));
+    assert_eq!(v.directory.len(), 3);
+    assert_eq!(v.directory.current_index(), 1);
+    assert!(v.render_image().is_some());
+    fs::remove_dir_all(&dir).unwrap();
+}
