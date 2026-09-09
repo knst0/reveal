@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::{CacheStore, CachedImage, DEFAULT_CAPACITY_BYTES, Loader, RequestId};
+use super::{CacheStore, CachedImage, NavigationDirection, RequestKind, DEFAULT_CAPACITY_BYTES, Loader, RequestId};
 use crate::decode::DecodeError;
 use crate::directory::Directory;
 
@@ -21,6 +22,9 @@ pub struct ImageCache {
     inflight: Vec<(PathBuf, RequestId)>,
     target: (u32, u32),
     resample: crate::render::Resample,
+    last_index: Option<usize>,
+    length: usize,
+    sizes: HashMap<PathBuf, u64>,
 }
 
 impl Default for ImageCache {
@@ -41,6 +45,9 @@ impl ImageCache {
             inflight: Vec::new(),
             target: (0, 0),
             resample: crate::render::Resample::Filtered,
+            last_index: None,
+            length: 0,
+            sizes: HashMap::new(),
         }
     }
 
@@ -65,11 +72,40 @@ impl ImageCache {
     }
 
     pub fn request(&mut self, path: &Path, index: usize) {
+        self.request_with(path, index, RequestKind::Explicit, None);
+    }
+
+    pub fn request_as(&mut self, path: &Path, index: usize, kind: RequestKind) {
+        self.request_with(path, index, kind, None);
+    }
+
+    fn request_with(&mut self, path: &Path, index: usize, kind: RequestKind, size: Option<u64>) {
         if self.store.contains(path) || self.inflight.iter().any(|(p, _)| p == path) {
             return;
         }
+        if kind == RequestKind::Prefetch {
+            if let Some(len) = self.file_size(path, size) {
+                let remaining =
+                    self.store.capacity_bytes().saturating_sub(self.store.used_bytes());
+                if len as usize > remaining {
+                    return;
+                }
+            }
+        }
         let id = self.loader.request(path.to_path_buf(), index, self.target, self.resample);
         self.inflight.push((path.to_path_buf(), id));
+    }
+
+    fn file_size(&mut self, path: &Path, hint: Option<u64>) -> Option<u64> {
+        if hint.is_some() {
+            return hint;
+        }
+        if let Some(size) = self.sizes.get(path) {
+            return Some(*size);
+        }
+        let len = std::fs::metadata(path).ok()?.len();
+        self.sizes.insert(path.to_path_buf(), len);
+        Some(len)
     }
 
     pub fn prefetch_neighbours(&mut self, dir: &Directory) {
@@ -86,7 +122,8 @@ impl ImageCache {
             }
             if let Some(path) = dir.path_at(index) {
                 let path = path.to_path_buf();
-                self.request(&path, index);
+                let size = dir.size_at(index);
+                self.request_with(&path, index, RequestKind::Prefetch, size);
             }
         }
     }
@@ -96,6 +133,9 @@ impl ImageCache {
     }
 
     pub fn set_current_index(&mut self, index: usize) {
+        let direction = NavigationDirection::from_transition(self.last_index, index, self.length);
+        self.last_index = Some(index);
+        self.store.set_direction(direction);
         self.loader.set_current_index(index);
     }
 
@@ -170,7 +210,8 @@ impl ImageCache {
     }
 
     pub fn sync_to_directory(&mut self, dir: &Directory) {
-        self.store.reindex(|p| dir.entries().iter().position(|e| e.as_path() == p));
+        self.length = dir.len();
+        self.store.reindex(|p| dir.index_of_path(p));
     }
 }
 

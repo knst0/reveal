@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -14,6 +15,8 @@ pub enum Navigation {
 pub struct Directory {
     dir: PathBuf,
     entries: Vec<PathBuf>,
+    index: HashMap<PathBuf, usize>,
+    sizes: Vec<Option<u64>>,
     current: usize,
     last_modified: Option<SystemTime>,
 }
@@ -24,6 +27,21 @@ fn sort_entries(entries: &mut [PathBuf]) {
         let b = b.file_name().unwrap_or_default().to_string_lossy();
         lexical_sort::natural_lexical_cmp(&a, &b)
     });
+}
+
+fn build_index(entries: &[PathBuf]) -> HashMap<PathBuf, usize> {
+    let mut index = HashMap::with_capacity(entries.len());
+    for (i, path) in entries.iter().enumerate() {
+        index.entry(path.clone()).or_insert(i);
+    }
+    index
+}
+
+fn build_sizes(entries: &[PathBuf]) -> Vec<Option<u64>> {
+    entries
+        .iter()
+        .map(|path| std::fs::metadata(path).ok().map(|meta| meta.len()))
+        .collect()
 }
 
 fn read_entries(dir: &Path) -> io::Result<Vec<PathBuf>> {
@@ -65,7 +83,9 @@ impl Directory {
     pub fn single(path: &Path) -> Self {
         let (dir, file) = split_target(path);
         let entries: Vec<PathBuf> = file.into_iter().collect();
-        Self { last_modified: None, dir, entries, current: 0 }
+        let index = build_index(&entries);
+        let sizes = build_sizes(&entries);
+        Self { last_modified: None, dir, entries, index, sizes, current: 0 }
     }
 
     pub fn open_at(path: &Path) -> io::Result<Self> {
@@ -73,8 +93,10 @@ impl Directory {
 
         let entries = read_entries(&dir)?;
         let current = file.as_ref().and_then(|f| index_of(&entries, f)).unwrap_or(0);
+        let index = build_index(&entries);
+        let sizes = build_sizes(&entries);
 
-        Ok(Self { last_modified: modified_of(&dir), dir, entries, current })
+        Ok(Self { last_modified: modified_of(&dir), dir, entries, index, sizes, current })
     }
 
     pub fn dir(&self) -> &Path {
@@ -124,8 +146,19 @@ impl Directory {
         self.current()
     }
 
+    pub fn size_at(&self, index: usize) -> Option<u64> {
+        self.sizes.get(index).copied().flatten()
+    }
+
+    pub fn index_of_path(&self, path: &Path) -> Option<usize> {
+        match self.index.get(path) {
+            Some(index) => Some(*index),
+            None => index_of(&self.entries, path),
+        }
+    }
+
     pub fn jump_to(&mut self, path: &Path) -> bool {
-        match index_of(&self.entries, path) {
+        match self.index_of_path(path) {
             Some(index) => {
                 self.current = index;
                 true
@@ -136,7 +169,21 @@ impl Directory {
 
     pub fn refresh(&mut self) -> io::Result<()> {
         let previous = self.current().map(Path::to_path_buf);
+        let mut known: HashMap<PathBuf, u64> = self
+            .entries
+            .iter()
+            .zip(self.sizes.iter())
+            .filter_map(|(path, size)| size.map(|size| (path.clone(), size)))
+            .collect();
         self.entries = read_entries(&self.dir)?;
+        self.index = build_index(&self.entries);
+        self.sizes = self
+            .entries
+            .iter()
+            .map(|path| {
+                known.remove(path).or_else(|| std::fs::metadata(path).ok().map(|m| m.len()))
+            })
+            .collect();
         self.last_modified = modified_of(&self.dir);
         self.current = previous
             .as_deref()

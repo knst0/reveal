@@ -6,8 +6,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use manager::ImageCache;
-pub use store::CacheStore;
+pub use store::{CacheStore, NavigationDirection};
 pub use worker::{LoadResult, Loader};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestKind {
+    Explicit,
+    Prefetch,
+}
 
 use crate::decode::{DecodeOutput, Orientation};
 

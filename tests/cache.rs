@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use reveal::cache::{CacheStore, CachedImage, ImageCache, Loader};
+use reveal::cache::{CacheStore, CachedImage, ImageCache, Loader, NavigationDirection, RequestKind};
 use reveal::decode::{DecodeOutput, Decoded, DecodedImage, Orientation};
 use reveal::directory::Directory;
 
@@ -49,6 +49,97 @@ fn never_evicts_the_current_image_even_when_oversized() {
     store.insert(fake("current.png", 5000), 3, 3);
     assert!(store.contains(Path::new("current.png")));
     assert_eq!(store.len(), 1);
+}
+
+#[test]
+fn backward_navigation_keeps_the_next_entry_cached() {
+    let mut store = CacheStore::new(400);
+
+    store.insert(fake("9.png", 100), 9, 9);
+    store.insert(fake("8.png", 100), 8, 9);
+    store.insert(fake("7.png", 100), 7, 9);
+    store.insert(fake("10.png", 100), 10, 9);
+
+    for c in (3..10).rev() {
+        store.set_direction(NavigationDirection::Backward);
+        let ahead = format!("{}.png", c - 3);
+        store.insert(fake(&ahead, 100), c - 3, c);
+
+        assert!(store.contains(Path::new(&ahead)), "prefetched image ahead of travel must survive at current {c}");
+        assert_eq!(store.used_bytes(), 400, "used_bytes must stay consistent with cached entries");
+    }
+
+    assert!(store.contains(Path::new("1.png")), "entries on the backward side of travel must stay cached");
+    assert!(store.contains(Path::new("0.png")));
+    assert!(!store.contains(Path::new("10.png")), "an entry behind the travel direction must be evicted");
+    assert!(!store.contains(Path::new("4.png")));
+    assert_eq!(store.used_bytes(), 400);
+    assert_eq!(store.len(), 4);
+}
+
+#[test]
+fn a_wrap_sets_the_direction_of_travel() {
+    assert_eq!(
+        NavigationDirection::from_transition(Some(23), 0, 24),
+        NavigationDirection::Forward,
+        "wrapping forward from the last entry travels forward"
+    );
+    assert_eq!(
+        NavigationDirection::from_transition(Some(0), 23, 24),
+        NavigationDirection::Backward,
+        "wrapping backward from the first entry travels backward"
+    );
+    assert_eq!(
+        NavigationDirection::from_transition(Some(5), 6, 24),
+        NavigationDirection::Forward
+    );
+    assert_eq!(
+        NavigationDirection::from_transition(Some(6), 5, 24),
+        NavigationDirection::Backward
+    );
+    assert_eq!(NavigationDirection::from_transition(None, 0, 24), NavigationDirection::Unknown);
+    assert_eq!(
+        NavigationDirection::from_transition(Some(0), 0, 1),
+        NavigationDirection::Unknown,
+        "a single entry never establishes travel"
+    );
+}
+
+#[test]
+fn unknown_direction_still_evicts_by_symmetric_distance() {
+    let mut store = CacheStore::new(250);
+    store.set_direction(NavigationDirection::Unknown);
+
+    store.insert(fake("near.png", 100), 5, 5);
+    store.insert(fake("mid.png", 100), 7, 5);
+    store.insert(fake("far.png", 100), 40, 5);
+
+    assert!(store.contains(Path::new("near.png")));
+    assert!(store.contains(Path::new("mid.png")));
+    assert!(!store.contains(Path::new("far.png")), "farthest by symmetric distance goes first");
+    assert_eq!(store.used_bytes(), 200);
+}
+
+#[test]
+fn prefetch_is_refused_when_oversized_but_explicit_open_fails_open() {
+    let dir = temp_dir("guard");
+    let path = dir.join("big.png");
+    write_png(&path, 32);
+    let file_size = fs::metadata(&path).unwrap().len() as usize;
+
+    let mut cache = ImageCache::new(file_size - 1, 1);
+    cache.set_target_size(16, 16);
+
+    cache.request_as(&path, 0, RequestKind::Prefetch);
+    cache.pump(0);
+    assert!(cache.get(&path).is_none(), "oversized prefetch must be skipped");
+    assert_eq!(cache.inflight_len(), 0);
+
+    let bytes = cache.block_on(&path, 0).expect("explicit open must fail open").bytes;
+    assert!(cache.get(&path).is_some());
+    assert_eq!(bytes, 32 * 32 * 4 + 16 * 16 * 4, "decoded pixels plus the display copy");
+
+    fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]

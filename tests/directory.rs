@@ -81,6 +81,53 @@ fn refresh_survives_current_file_deletion() {
 }
 
 #[test]
+fn index_of_path_agrees_with_linear_scan() {
+    let dir = temp_dir("index");
+    for n in ["a.png", "b.png", "c.png"] {
+        write_png(&dir.join(n));
+    }
+    let d = Directory::open_at(&dir).unwrap();
+
+    let linear = |p: &Path| d.entries().iter().position(|e| e.as_path() == p);
+
+    for name in ["a.png", "b.png", "c.png"] {
+        let p = dir.join(name);
+        assert_eq!(d.index_of_path(&p), linear(&p), "mismatch for {name}");
+    }
+    let missing = dir.join("missing.png");
+    assert_eq!(d.index_of_path(&missing), linear(&missing));
+    assert_eq!(d.index_of_path(&missing), None);
+
+    let first = d.entries().first().unwrap().clone();
+    let last = d.entries().last().unwrap().clone();
+    assert_eq!(d.index_of_path(&first), Some(0));
+    assert_eq!(d.index_of_path(&last), Some(d.len() - 1));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn size_at_matches_the_filesystem() {
+    let dir = temp_dir("sizes");
+    for n in ["a.png", "b.png"] {
+        write_png(&dir.join(n));
+    }
+    let mut d = Directory::open_at(&dir).unwrap();
+
+    for (index, entry) in d.entries().iter().enumerate() {
+        let expected = fs::metadata(entry).unwrap().len();
+        assert_eq!(d.size_at(index), Some(expected));
+    }
+    assert_eq!(d.size_at(d.len()), None);
+
+    let extra = dir.join("c.png");
+    write_png(&extra);
+    d.refresh().unwrap();
+    let index = d.index_of_path(&extra).unwrap();
+    assert_eq!(d.size_at(index), Some(fs::metadata(&extra).unwrap().len()));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn empty_directory_navigates_to_nothing() {
     let dir = temp_dir("empty");
     let mut d = Directory::open_at(&dir).unwrap();
