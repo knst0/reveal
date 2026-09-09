@@ -35,10 +35,11 @@ pub fn drag_region() -> Div {
     div()
         .flex_grow(1.)
         .h_full()
+        .window_control_area(WindowControlArea::Drag)
         .on_mouse_down(MouseButton::Left, |event: &MouseDownEvent, window, _cx| {
             if event.click_count == 2 {
                 window.zoom_window();
-            } else {
+            } else if !cfg!(target_os = "windows") {
                 window.start_window_move();
             }
         })
