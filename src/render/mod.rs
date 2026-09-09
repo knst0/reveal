@@ -401,7 +401,9 @@ pub fn prepare_display(
     let target = unoriented_target(physical, orientation);
     let scaled = downscaled(image, target, resample);
     let placed = match scaled {
-        std::borrow::Cow::Owned(owned) if orientation == Orientation::Normal => bgra_in_place(owned),
+        std::borrow::Cow::Owned(owned) if orientation == Orientation::Normal => {
+            bgra_in_place(owned)
+        }
         scaled => orient_in_order(&scaled, orientation, ChannelOrder::Bgra),
     };
     let buffer = RgbaImage::from_raw(placed.width, placed.height, placed.rgba)

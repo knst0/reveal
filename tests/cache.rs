@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use reveal::cache::{CacheStore, CachedImage, ImageCache, Loader, NavigationDirection, RequestKind};
+use reveal::cache::{
+    CacheStore, CachedImage, ImageCache, Loader, NavigationDirection, RequestKind,
+};
 use reveal::decode::{DecodeOutput, Decoded, DecodedImage, Orientation};
 use reveal::directory::Directory;
 
@@ -65,13 +67,22 @@ fn backward_navigation_keeps_the_next_entry_cached() {
         let ahead = format!("{}.png", c - 3);
         store.insert(fake(&ahead, 100), c - 3, c);
 
-        assert!(store.contains(Path::new(&ahead)), "prefetched image ahead of travel must survive at current {c}");
+        assert!(
+            store.contains(Path::new(&ahead)),
+            "prefetched image ahead of travel must survive at current {c}"
+        );
         assert_eq!(store.used_bytes(), 400, "used_bytes must stay consistent with cached entries");
     }
 
-    assert!(store.contains(Path::new("1.png")), "entries on the backward side of travel must stay cached");
+    assert!(
+        store.contains(Path::new("1.png")),
+        "entries on the backward side of travel must stay cached"
+    );
     assert!(store.contains(Path::new("0.png")));
-    assert!(!store.contains(Path::new("10.png")), "an entry behind the travel direction must be evicted");
+    assert!(
+        !store.contains(Path::new("10.png")),
+        "an entry behind the travel direction must be evicted"
+    );
     assert!(!store.contains(Path::new("4.png")));
     assert_eq!(store.used_bytes(), 400);
     assert_eq!(store.len(), 4);
@@ -89,14 +100,8 @@ fn a_wrap_sets_the_direction_of_travel() {
         NavigationDirection::Backward,
         "wrapping backward from the first entry travels backward"
     );
-    assert_eq!(
-        NavigationDirection::from_transition(Some(5), 6, 24),
-        NavigationDirection::Forward
-    );
-    assert_eq!(
-        NavigationDirection::from_transition(Some(6), 5, 24),
-        NavigationDirection::Backward
-    );
+    assert_eq!(NavigationDirection::from_transition(Some(5), 6, 24), NavigationDirection::Forward);
+    assert_eq!(NavigationDirection::from_transition(Some(6), 5, 24), NavigationDirection::Backward);
     assert_eq!(NavigationDirection::from_transition(None, 0, 24), NavigationDirection::Unknown);
     assert_eq!(
         NavigationDirection::from_transition(Some(0), 0, 1),

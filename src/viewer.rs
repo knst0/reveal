@@ -487,9 +487,7 @@ impl Viewer {
         }
         self.prepared.keys().all(|key| {
             [1isize, -1, 0].iter().any(|offset| {
-                self.directory
-                    .offset_index(*offset)
-                    .and_then(|index| self.directory.path_at(index))
+                self.directory.offset_index(*offset).and_then(|index| self.directory.path_at(index))
                     == Some(key.as_path())
             })
         })

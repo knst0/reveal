@@ -38,10 +38,7 @@ fn build_index(entries: &[PathBuf]) -> HashMap<PathBuf, usize> {
 }
 
 fn build_sizes(entries: &[PathBuf]) -> Vec<Option<u64>> {
-    entries
-        .iter()
-        .map(|path| std::fs::metadata(path).ok().map(|meta| meta.len()))
-        .collect()
+    entries.iter().map(|path| std::fs::metadata(path).ok().map(|meta| meta.len())).collect()
 }
 
 fn read_entries(dir: &Path) -> io::Result<Vec<PathBuf>> {

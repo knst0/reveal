@@ -224,10 +224,8 @@ impl RevealApp {
 
         cx.spawn(async move |this, cx| {
             loop {
-                let timeout = this
-                    .update(cx, |this, _| this.viewer.next_time_based_delay())
-                    .ok()
-                    .flatten();
+                let timeout =
+                    this.update(cx, |this, _| this.viewer.next_time_based_delay()).ok().flatten();
                 let fired = match timeout {
                     Some(duration) => {
                         let next = rx.next();

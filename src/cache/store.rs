@@ -148,7 +148,11 @@ impl CacheStore {
             .values()
             .filter(|e| e.index != current_index)
             .map(|e| {
-                (keep_cost(e.index, current_index, self.direction), e.image.path.clone(), e.image.bytes)
+                (
+                    keep_cost(e.index, current_index, self.direction),
+                    e.image.path.clone(),
+                    e.image.bytes,
+                )
             })
             .collect();
         candidates.sort_by_key(|b| std::cmp::Reverse(b.0));
