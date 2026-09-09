@@ -10,95 +10,58 @@ fn canonical_key(key: &str) -> String {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Action {
-    FileOpen,
-    FolderOpen,
-    ImgNext,
-    ImgPrev,
-    ImgOrig,
-    ImgFit,
-    ImgFitBest,
-    ImgDel,
-    ImgCopy,
-    ImgPaste,
-    PanUp,
-    PanDown,
-    PanLeft,
-    PanRight,
-    ZoomIn,
-    ZoomOut,
-    PlayAnim,
-    PlayPresent,
-    PlayPresentRandom,
-    ToggleFullscreen,
-    ToggleAntialias,
-    ToggleTheme,
-    Settings,
-    Escape,
-}
-
-impl Action {
-    pub fn name(self) -> &'static str {
-        match self {
-            Action::FileOpen => "file_open",
-            Action::FolderOpen => "folder_open",
-            Action::ImgNext => "img_next",
-            Action::ImgPrev => "img_prev",
-            Action::ImgOrig => "img_orig",
-            Action::ImgFit => "img_fit",
-            Action::ImgFitBest => "img_fit_best",
-            Action::ImgDel => "img_del",
-            Action::ImgCopy => "img_copy",
-            Action::ImgPaste => "img_paste",
-            Action::PanUp => "pan_up",
-            Action::PanDown => "pan_down",
-            Action::PanLeft => "pan_left",
-            Action::PanRight => "pan_right",
-            Action::ZoomIn => "zoom_in",
-            Action::ZoomOut => "zoom_out",
-            Action::PlayAnim => "play_anim",
-            Action::PlayPresent => "play_present",
-            Action::PlayPresentRandom => "play_present_random",
-            Action::ToggleFullscreen => "toggle_fullscreen",
-            Action::ToggleAntialias => "toggle_antialias",
-            Action::ToggleTheme => "toggle_theme",
-            Action::Settings => "settings",
-            Action::Escape => "escape",
+macro_rules! actions {
+    ($($variant:ident => $name:literal),* $(,)?) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum Action {
+            $($variant),*
         }
-    }
 
-    pub fn from_name(name: &str) -> Option<Action> {
-        ALL_ACTIONS.iter().copied().find(|a| a.name() == name)
-    }
+        impl Action {
+            pub fn name(self) -> &'static str {
+                match self {
+                    $(Action::$variant => $name),*
+                }
+            }
+
+            pub fn from_name(name: &str) -> Option<Action> {
+                match name {
+                    $($name => Some(Action::$variant),)*
+                    _ => None,
+                }
+            }
+        }
+
+        pub const ALL_ACTIONS: &[Action] = &[$(Action::$variant),*];
+    };
 }
 
-pub const ALL_ACTIONS: &[Action] = &[
-    Action::FileOpen,
-    Action::FolderOpen,
-    Action::ImgNext,
-    Action::ImgPrev,
-    Action::ImgOrig,
-    Action::ImgFit,
-    Action::ImgFitBest,
-    Action::ImgDel,
-    Action::ImgCopy,
-    Action::ImgPaste,
-    Action::PanUp,
-    Action::PanDown,
-    Action::PanLeft,
-    Action::PanRight,
-    Action::ZoomIn,
-    Action::ZoomOut,
-    Action::PlayAnim,
-    Action::PlayPresent,
-    Action::PlayPresentRandom,
-    Action::ToggleFullscreen,
-    Action::ToggleAntialias,
-    Action::ToggleTheme,
-    Action::Settings,
-    Action::Escape,
-];
+actions! {
+    FileOpen => "file_open",
+    FolderOpen => "folder_open",
+    ImgNext => "img_next",
+    ImgPrev => "img_prev",
+    ImgOrig => "img_orig",
+    ImgFit => "img_fit",
+    ImgFitBest => "img_fit_best",
+    ImgDel => "img_del",
+    ImgCopy => "img_copy",
+    ImgPaste => "img_paste",
+    PanUp => "pan_up",
+    PanDown => "pan_down",
+    PanLeft => "pan_left",
+    PanRight => "pan_right",
+    ZoomIn => "zoom_in",
+    ZoomOut => "zoom_out",
+    PlayAnim => "play_anim",
+    PlayPresent => "play_present",
+    PlayPresentRandom => "play_present_random",
+    ToggleFullscreen => "toggle_fullscreen",
+    ToggleAntialias => "toggle_antialias",
+    ToggleTheme => "toggle_theme",
+    Settings => "settings",
+    Escape => "escape",
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Modifiers {
