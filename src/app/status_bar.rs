@@ -31,8 +31,8 @@ impl RevealApp {
             .child(
                 div()
                     .flex()
+                    .gap_1()
                     .items_center()
-                    .gap_px()
                     .child(self.toolbar_button(
                         "sb-zoom-out",
                         Icon::Minus,
@@ -41,6 +41,34 @@ impl RevealApp {
                         p,
                         cx,
                     ))
+                    .child(
+                        div()
+                            .id("zoom")
+                            .relative()
+                            .child(
+                                ui::tool_button("zoom-btn", p, self.zoom_menu_open)
+                                    .child(zoom_pct)
+                                    .on_click(cx.listener(|this, _e, _w, cx| {
+                                        this.zoom_menu_open = !this.zoom_menu_open;
+                                        cx.notify();
+                                    })),
+                            )
+                            .children(self.zoom_menu_open.then(|| {
+                                div().absolute().bottom(px(32.)).right_0().child(
+                                    ui::menu_surface(p)
+                                        .occlude()
+                                        .min_w(px(160.))
+                                        .child(zoom_menu_item(cx, "Fit to Window", FitMode::Fit, p))
+                                        .child(zoom_menu_item(cx, "Fit Best", FitMode::FitBest, p))
+                                        .child(zoom_menu_item(
+                                            cx,
+                                            "Original Size",
+                                            FitMode::Original,
+                                            p,
+                                        )),
+                                )
+                            })),
+                    )
                     .child(self.toolbar_button(
                         "sb-zoom-in",
                         Icon::Plus,
@@ -49,29 +77,6 @@ impl RevealApp {
                         p,
                         cx,
                     )),
-            )
-            .child(
-                div()
-                    .id("zoom")
-                    .relative()
-                    .child(
-                        ui::tool_button("zoom-btn", p, self.zoom_menu_open)
-                            .child(zoom_pct)
-                            .on_click(cx.listener(|this, _e, _w, cx| {
-                                this.zoom_menu_open = !this.zoom_menu_open;
-                                cx.notify();
-                            })),
-                    )
-                    .children(self.zoom_menu_open.then(|| {
-                        div().absolute().bottom(px(32.)).right_0().child(
-                            ui::menu_surface(p)
-                                .occlude()
-                                .min_w(px(160.))
-                                .child(zoom_menu_item(cx, "Fit to Window", FitMode::Fit, p))
-                                .child(zoom_menu_item(cx, "Fit Best", FitMode::FitBest, p))
-                                .child(zoom_menu_item(cx, "Original Size", FitMode::Original, p)),
-                        )
-                    })),
             )
     }
 }

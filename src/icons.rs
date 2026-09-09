@@ -18,6 +18,10 @@ pub enum Icon {
     Plus,
     Square,
     Close,
+    CaptionMinimize,
+    CaptionMaximize,
+    CaptionRestore,
+    CaptionClose,
 }
 
 impl Icon {
@@ -37,12 +41,21 @@ impl Icon {
             Icon::Plus => include_bytes!("../resource/icons/plus.svg"),
             Icon::Square => include_bytes!("../resource/icons/square.svg"),
             Icon::Close => include_bytes!("../resource/icons/x.svg"),
+            Icon::CaptionMinimize => include_bytes!("../resource/icons/caption-minimize.svg"),
+            Icon::CaptionMaximize => include_bytes!("../resource/icons/caption-maximize.svg"),
+            Icon::CaptionRestore => include_bytes!("../resource/icons/caption-restore.svg"),
+            Icon::CaptionClose => include_bytes!("../resource/icons/caption-close.svg"),
         }
     }
 }
 
 pub const ICON_SIZE: f32 = 16.0;
+pub const CAPTION_ICON_SIZE: f32 = 10.0;
 
 pub fn icon(kind: Icon, tint: Hsla) -> Svg {
-    svg().size(rem(ICON_SIZE)).flex_none().text_color(tint).data(kind.data())
+    sized_icon(kind, tint, ICON_SIZE)
+}
+
+pub fn sized_icon(kind: Icon, tint: Hsla, size: f32) -> Svg {
+    svg().size(rem(size)).flex_none().text_color(tint).data(kind.data())
 }

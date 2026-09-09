@@ -1,8 +1,8 @@
 use gpui::{
     Decorations, Div, InteractiveElement, MouseButton, MouseDownEvent, ParentElement, ResizeEdge,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    StatefulInteractiveElement, Styled, Window, WindowControlArea, div, px,
 };
-use reveal::icons::{Icon, icon};
+use reveal::icons::{CAPTION_ICON_SIZE, Icon, sized_icon};
 use reveal::ui::{self, Palette};
 
 pub const TRAFFIC_LIGHT_INSET: f32 = 20.0;
@@ -57,42 +57,50 @@ pub fn window_controls(p: Palette, window: &Window) -> Option<Div> {
     Some(
         div()
             .ml_2()
+            .h_full()
             .flex()
-            .items_center()
-            .gap_px()
+            .items_stretch()
             .children(controls.minimize.then(|| {
-                control_button("wc-minimize", Icon::Minus, p, false).on_click(|_e, window, _cx| {
-                    window.minimize_window();
-                })
+                control_button("wc-minimize", Icon::CaptionMinimize, p, false)
+                    .window_control_area(WindowControlArea::Min)
+                    .on_click(|_e, window, _cx| {
+                        window.minimize_window();
+                    })
             }))
             .children(controls.maximize.then(|| {
                 control_button(
                     "wc-maximize",
-                    if maximized { Icon::Copy } else { Icon::Square },
+                    if maximized { Icon::CaptionRestore } else { Icon::CaptionMaximize },
                     p,
                     false,
                 )
+                .window_control_area(WindowControlArea::Max)
                 .on_click(|_e, window, _cx| {
                     window.zoom_window();
                 })
             }))
-            .child(control_button("wc-close", Icon::Close, p, true).on_click(|_e, window, _cx| {
-                window.remove_window();
-            })),
+            .child(
+                control_button("wc-close", Icon::CaptionClose, p, true)
+                    .window_control_area(WindowControlArea::Close)
+                    .on_click(|_e, window, _cx| {
+                        window.remove_window();
+                    }),
+            ),
     )
 }
 
 fn control_button(id: &'static str, kind: Icon, p: Palette, danger: bool) -> gpui::Stateful<Div> {
-    let tint = ui::color(p.text_muted);
+    let hover_bg = if danger { p.close_hover } else { p.element_hover };
     div()
         .id(id)
-        .size(ui::rem(ui::BUTTON_SIZE))
+        .w(ui::rem(ui::CAPTION_BUTTON_WIDTH))
+        .h_full()
         .flex()
+        .flex_shrink_0()
         .items_center()
         .justify_center()
-        .rounded(ui::rem(6.))
-        .hover(|s| s.bg(ui::color(if danger { p.danger } else { p.element_hover })))
-        .child(icon(kind, tint))
+        .hover(|s| s.bg(ui::color(hover_bg)))
+        .child(sized_icon(kind, ui::color(p.text), CAPTION_ICON_SIZE))
 }
 
 pub fn resize_handles(window: &Window) -> Option<Div> {

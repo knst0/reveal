@@ -186,16 +186,12 @@ impl SettingsWindow {
                     .child(div().flex_grow(1.).child("Interface scale"))
                     .children(UI_SCALES.iter().map(|scale| {
                         let scale = *scale;
-                        ui::chip(
-                            ("ui-scale", scale as usize),
-                            p,
-                            scale == config.window.ui_scale,
-                        )
-                        .child(scale.label())
-                        .on_click(cx.listener(move |this, _e, _w, cx| {
-                            this.state.set_ui_scale(scale);
-                            this.preview(cx);
-                        }))
+                        ui::chip(("ui-scale", scale as usize), p, scale == config.window.ui_scale)
+                            .child(scale.label())
+                            .on_click(cx.listener(move |this, _e, _w, cx| {
+                                this.state.set_ui_scale(scale);
+                                this.preview(cx);
+                            }))
                     })),
             )
             .child(section_label(p, "Updates"))

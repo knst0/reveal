@@ -20,6 +20,7 @@ pub struct Palette {
     pub element_hover: u32,
     pub element_active: u32,
     pub danger: u32,
+    pub close_hover: u32,
 }
 
 pub const DARK: Palette = Palette {
@@ -35,6 +36,7 @@ pub const DARK: Palette = Palette {
     element_hover: 0x323232,
     element_active: 0x3c3c3c,
     danger: 0xcc7a72,
+    close_hover: 0xc42b1c,
 };
 
 pub const LIGHT: Palette = Palette {
@@ -50,6 +52,7 @@ pub const LIGHT: Palette = Palette {
     element_hover: 0xe8e8e6,
     element_active: 0xdfdfdc,
     danger: 0xd36151,
+    close_hover: 0xc42b1c,
 };
 
 pub fn palette(theme: Theme) -> Palette {
@@ -65,16 +68,19 @@ pub fn rem(design_px: f32) -> Rems {
 pub const TOOLBAR_HEIGHT: f32 = 40.0;
 pub const STATUS_BAR_HEIGHT: f32 = 34.0;
 pub const BUTTON_SIZE: f32 = 24.0;
+pub const CAPTION_BUTTON_WIDTH: f32 = 46.0;
 
 pub fn color(value: u32) -> Hsla {
     rgb(value).into()
 }
 
 pub fn toolbar(p: Palette) -> Div {
+    let pad_right = cfg!(target_os = "macos");
     div()
         .h(rem(TOOLBAR_HEIGHT))
         .flex_shrink_0()
-        .px_3()
+        .pl_3()
+        .when(pad_right, |s| s.pr_3())
         .flex()
         .items_center()
         .gap_1()
