@@ -15,8 +15,8 @@ impl RevealApp {
         p: Palette,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let has_image = self.viewer.current_path().is_some();
-        let animated = self.viewer.is_animated();
+        let has_image = self.viewer.presentation.current_path().is_some();
+        let animated = self.viewer.presentation.is_animated();
         let playing = self.viewer.playback.state == PlaybackState::Playing;
 
         let item = |id: &'static str, label: &'static str, action: Action| {

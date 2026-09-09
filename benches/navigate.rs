@@ -38,7 +38,7 @@ fn open_at(files: &[PathBuf]) -> Viewer {
     viewer.open(&files[0]).unwrap();
     viewer.wait_for_scan();
     assert_eq!(
-        viewer.directory.len(),
+        viewer.session.directory.len(),
         files.len(),
         "the scan must be indexed before navigation is measured"
     );

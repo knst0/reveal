@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::decode::Decoded;
@@ -16,6 +18,7 @@ pub struct Playback {
     frame: usize,
     frame_started: Instant,
     present_interval: Duration,
+    paused_paths: HashSet<PathBuf>,
 }
 
 impl Default for Playback {
@@ -25,6 +28,7 @@ impl Default for Playback {
             frame: 0,
             frame_started: Instant::now(),
             present_interval: Duration::from_secs(5),
+            paused_paths: HashSet::new(),
         }
     }
 }
@@ -50,6 +54,38 @@ impl Playback {
             _ => PlaybackState::Playing,
         };
         self.frame_started = Instant::now();
+    }
+
+    pub fn toggle_play_for(&mut self, path: Option<&Path>) {
+        self.toggle_play();
+        let Some(path) = path else {
+            return;
+        };
+        if self.state == PlaybackState::Paused {
+            self.paused_paths.insert(path.to_path_buf());
+        } else {
+            self.paused_paths.remove(path);
+        }
+    }
+
+    pub fn restore_for(&mut self, path: &Path) {
+        if matches!(self.state, PlaybackState::Present | PlaybackState::PresentRandom) {
+            return;
+        }
+        let state = if self.paused_paths.contains(path) {
+            PlaybackState::Paused
+        } else {
+            PlaybackState::Playing
+        };
+        self.set_state(state);
+    }
+
+    pub fn forget_paused(&mut self) {
+        self.paused_paths.clear();
+    }
+
+    pub fn paused_count(&self) -> usize {
+        self.paused_paths.len()
     }
 
     pub fn set_present_interval(&mut self, interval: Duration) {

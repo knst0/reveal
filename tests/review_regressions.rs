@@ -34,14 +34,17 @@ fn review_fit_to_window_must_follow_viewport_resize() {
     let mut viewer = Viewer::new();
     viewer.set_viewport(900.0, 600.0);
     viewer.show_pasted(pixels(300, 200));
-    assert_eq!(viewer.transform.fit, FitMode::Fit);
-    assert_eq!(viewer.transform.displayed_size(viewer.current_intrinsic()), (900.0, 600.0));
+    assert_eq!(viewer.view.transform.fit, FitMode::Fit);
+    assert_eq!(
+        viewer.view.transform.displayed_size(viewer.presentation.current_intrinsic()),
+        (900.0, 600.0)
+    );
 
     viewer.set_viewport(450.0, 300.0);
-    let actual = viewer.transform.displayed_size(viewer.current_intrinsic());
+    let actual = viewer.view.transform.displayed_size(viewer.presentation.current_intrinsic());
     println!(
         "new_viewport={:?}, displayed={actual:?}, fit={:?}",
-        viewer.viewport, viewer.transform.fit
+        viewer.view.viewport, viewer.view.transform.fit
     );
     assert_eq!(actual, (450.0, 300.0), "Fit to Window should recompute the fit after resizing");
 }
@@ -54,12 +57,12 @@ fn review_original_size_must_map_source_pixels_to_physical_pixels() {
     viewer.show_pasted(pixels(300, 200));
     viewer.set_fit(FitMode::Original);
 
-    let logical = viewer.transform.displayed_size(viewer.current_intrinsic());
-    let physical = (logical.0 * viewer.scale_factor, logical.1 * viewer.scale_factor);
+    let logical = viewer.view.transform.displayed_size(viewer.presentation.current_intrinsic());
+    let physical = (logical.0 * viewer.view.scale_factor, logical.1 * viewer.view.scale_factor);
     println!(
         "source={:?}, logical={logical:?}, physical={physical:?}, dpr={}",
-        viewer.current_source_size(),
-        viewer.scale_factor
+        viewer.presentation.current_source_size(),
+        viewer.view.scale_factor
     );
     assert_eq!(
         physical,
@@ -91,12 +94,12 @@ fn review_bare_relative_cli_filename_must_survive_directory_scan() {
     println!(
         "argument={:?}, directory_current={:?}, current_path={:?}, status={:?}",
         fixture.0,
-        viewer.directory.current(),
-        viewer.current_path(),
-        viewer.status()
+        viewer.session.directory.current(),
+        viewer.presentation.current_path(),
+        viewer.session.status()
     );
     assert!(
-        viewer.current_path().is_some(),
+        viewer.presentation.current_path().is_some(),
         "A valid relative image filename must remain pending until it has been presented"
     );
     assert!(viewer.render_image().is_some());

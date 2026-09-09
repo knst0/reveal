@@ -128,7 +128,7 @@ impl RevealApp {
 
         let mut config = self.config.clone();
         config.window.dark = self.theme.is_dark();
-        config.window.antialias = self.viewer.antialias();
+        config.window.antialias = self.viewer.view.antialias();
         config.updates = self.update_settings.clone();
         self.settings_baseline = Some((config.clone(), self.bindings.clone()));
         let state = SettingsState::new(config, self.bindings.clone());
@@ -185,7 +185,7 @@ impl RevealApp {
     }
 
     pub fn compute_title(&self) -> String {
-        title_for(self.viewer.current_path())
+        title_for(self.viewer.presentation.current_path())
     }
 
     pub fn start_ticker(&mut self, cx: &mut Context<Self>) {
@@ -207,7 +207,7 @@ impl RevealApp {
         }
 
         {
-            let loader = self.viewer.cache.loader_handle();
+            let loader = self.viewer.session.cache.loader_handle();
             let tx = tx.clone();
             cx.background_executor()
                 .spawn_dedicated(move |_| async move {
@@ -318,7 +318,7 @@ impl RevealApp {
     }
 
     fn start_scan_forwarder(&mut self, cx: &mut Context<Self>) {
-        let Some((receiver, generation)) = self.viewer.scan_receiver() else {
+        let Some((receiver, generation)) = self.viewer.session.scan_receiver() else {
             return;
         };
         let Some(tx) = self.wake.clone() else {
@@ -336,7 +336,7 @@ impl RevealApp {
     }
 
     fn sync_scan_forwarder(&mut self, cx: &mut Context<Self>) {
-        let generation = self.viewer.scan_generation();
+        let generation = self.viewer.session.scan_generation();
         if generation == self.scan_forwarded {
             return;
         }
@@ -446,7 +446,7 @@ impl Render for RevealApp {
                     return;
                 };
                 let now = (f32::from(event.position.x), f32::from(event.position.y));
-                this.viewer.pan((now.0 - px_, now.1 - py));
+                this.viewer.view.pan((now.0 - px_, now.1 - py));
                 this.drag_from = Some(now);
                 cx.notify();
             }))
@@ -459,7 +459,7 @@ impl Render for RevealApp {
                     return;
                 }
                 let cursor = this.to_image_area(event.position);
-                this.viewer.zoom_at(1.1f32.powf(delta.clamp(-5.0, 5.0)), cursor);
+                this.viewer.view.zoom_at(1.1f32.powf(delta.clamp(-5.0, 5.0)), cursor);
                 cx.notify();
             }))
             .child(self.render_toolbar(p, window, cx))
@@ -503,10 +503,10 @@ impl RevealApp {
             .overflow_hidden()
             .child(ImageElement::new(
                 self.viewer.render_image(),
-                self.viewer.current_intrinsic(),
-                self.viewer.transform,
-                self.viewer.frame_index(),
-                self.viewer.render_crop(),
+                self.viewer.presentation.current_intrinsic(),
+                self.viewer.view.transform,
+                self.viewer.playback.frame_index(),
+                self.viewer.presentation.render_crop(),
             ))
             .on_mouse_down(
                 MouseButton::Left,
@@ -516,10 +516,13 @@ impl RevealApp {
                             Some((f32::from(event.position.x), f32::from(event.position.y)));
                         return;
                     }
-                    let intrinsic = this.viewer.current_intrinsic();
+                    let intrinsic = this.viewer.presentation.current_intrinsic();
                     let point = this.to_image_area(event.position);
-                    if this.viewer.transform.image_contains(intrinsic, this.viewer.viewport, point)
-                    {
+                    if this.viewer.view.transform.image_contains(
+                        intrinsic,
+                        this.viewer.view.viewport,
+                        point,
+                    ) {
                         this.drag_from = None;
                         this.viewer.set_fit(FitMode::Fit);
                         cx.notify();
