@@ -128,7 +128,7 @@ jobs:
             echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
           fi
 
-      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - uses: ./.github/actions/setup-rust
         with:
