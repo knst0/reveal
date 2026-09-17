@@ -446,8 +446,7 @@ impl Render for RevealApp {
                     return;
                 };
                 let now = (f32::from(event.position.x), f32::from(event.position.y));
-                let intrinsic = this.viewer.presentation.current_intrinsic();
-                this.viewer.view.pan((now.0 - px_, now.1 - py), intrinsic);
+                this.viewer.view.pan((now.0 - px_, now.1 - py));
                 this.drag_from = Some(now);
                 cx.notify();
             }))

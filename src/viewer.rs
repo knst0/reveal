@@ -72,8 +72,8 @@ impl ViewState {
         self.transform.set_fit_with(fit, intrinsic, self.viewport, original_zoom);
     }
 
-    pub fn pan(&mut self, delta: (f32, f32), image: (f32, f32)) {
-        self.transform.pan(delta, image, self.viewport);
+    pub fn pan(&mut self, delta: (f32, f32)) {
+        self.transform.pan(delta);
     }
 
     pub fn zoom_at(&mut self, factor: f32, cursor: (f32, f32), image: (f32, f32)) {

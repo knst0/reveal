@@ -407,21 +407,22 @@ fn webtoon_display_buffer_stays_paintable() {
 }
 
 #[test]
-fn pan_stops_at_the_image_edge() {
+fn pan_is_free_and_never_clamps() {
     let image = (1000.0, 1000.0);
     let viewport = (500.0, 500.0);
     let mut t = ViewTransform { zoom: 1.0, offset: (0.0, 0.0), fit: FitMode::Free };
-    t.pan((10_000.0, 0.0), image, viewport);
-    assert_eq!(t.offset.0, 250.0, "right edge pins the canvas");
-    t.pan((-10_000.0, -10_000.0), image, viewport);
-    assert_eq!(t.offset, (-250.0, -250.0), "left/top edge pins the canvas");
+    t.pan((10_000.0, 0.0));
+    assert_eq!(t.offset.0, 10_000.0, "drag must not hit a wall");
+    t.pan((-20_000.0, -20_000.0));
+    assert_eq!(t.offset, (-10_000.0, -20_000.0), "drag stays exactly where dropped");
+    let _ = (image, viewport);
 }
 
 #[test]
-fn small_image_stays_centred_when_dragged() {
+fn small_image_pans_freely() {
     let mut t = ViewTransform { zoom: 1.0, offset: (0.0, 0.0), fit: FitMode::Free };
-    t.pan((50.0, -30.0), (200.0, 100.0), (600.0, 400.0));
-    assert_eq!(t.offset, (0.0, 0.0), "a fitting image has nowhere to scroll");
+    t.pan((50.0, -30.0));
+    assert_eq!(t.offset, (50.0, -30.0), "a fitting image still follows the drag");
 }
 
 #[test]

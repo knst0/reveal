@@ -108,8 +108,9 @@ impl ViewTransform {
         Some((left as u32, top as u32, (right - left) as u32, (bottom - top) as u32))
     }
 
-    /// Keeps the canvas on the image: a smaller image stays centred, a larger
+    /// Keeps a zoomed canvas on the image: a smaller image recentres, a larger
     /// one may move only until its edge reaches the viewport edge.
+    /// Pan stays free and never calls this.
     pub fn clamp_offset(&mut self, image: (f32, f32), viewport: (f32, f32)) {
         let (w, h) = self.displayed_size(image);
         self.offset.0 = if w <= viewport.0 {
@@ -124,11 +125,10 @@ impl ViewTransform {
         };
     }
 
-    pub fn pan(&mut self, delta: (f32, f32), image: (f32, f32), viewport: (f32, f32)) {
+    pub fn pan(&mut self, delta: (f32, f32)) {
         self.fit = FitMode::Free;
         self.offset.0 += delta.0;
         self.offset.1 += delta.1;
-        self.clamp_offset(image, viewport);
     }
 
     pub fn zoom_at(

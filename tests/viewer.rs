@@ -140,7 +140,7 @@ fn panning_switches_to_free_mode() {
 
     let intrinsic = v.presentation.current_intrinsic();
     v.view.zoom_at(4.0, (400.0, 300.0), intrinsic);
-    v.view.pan((25.0, -10.0), intrinsic);
+    v.view.pan((25.0, -10.0));
     assert_eq!(v.view.transform.fit, FitMode::Free);
     assert_eq!(v.view.transform.offset, (25.0, -10.0));
     fs::remove_dir_all(&dir).unwrap();
@@ -270,7 +270,7 @@ fn deferred_reprepare_preserves_free_zoom_ratio() {
     v.settle();
 
     let intrinsic = v.presentation.current_intrinsic();
-    v.view.pan((25.0, -10.0), intrinsic);
+    v.view.pan((25.0, -10.0));
     assert_eq!(v.view.transform.fit, FitMode::Free);
     v.view.zoom_at(1.5, (320.0, 200.0), intrinsic);
     let before = v.presentation.current_intrinsic().0 * v.view.transform.zoom;
@@ -344,7 +344,7 @@ fn set_antialias_preserves_zoom_and_pan() {
     v.settle();
 
     let intrinsic = v.presentation.current_intrinsic();
-    v.view.pan((25.0, -10.0), intrinsic);
+    v.view.pan((25.0, -10.0));
     v.view.zoom_at(1.5, (400.0, 300.0), intrinsic);
     let before = v.view.transform;
 
