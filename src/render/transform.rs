@@ -108,13 +108,36 @@ impl ViewTransform {
         Some((left as u32, top as u32, (right - left) as u32, (bottom - top) as u32))
     }
 
-    pub fn pan(&mut self, delta: (f32, f32)) {
+    /// Keeps the canvas on the image: a smaller image stays centred, a larger
+    /// one may move only until its edge reaches the viewport edge.
+    pub fn clamp_offset(&mut self, image: (f32, f32), viewport: (f32, f32)) {
+        let (w, h) = self.displayed_size(image);
+        self.offset.0 = if w <= viewport.0 {
+            0.0
+        } else {
+            self.offset.0.clamp((viewport.0 - w) / 2.0, (w - viewport.0) / 2.0)
+        };
+        self.offset.1 = if h <= viewport.1 {
+            0.0
+        } else {
+            self.offset.1.clamp((viewport.1 - h) / 2.0, (h - viewport.1) / 2.0)
+        };
+    }
+
+    pub fn pan(&mut self, delta: (f32, f32), image: (f32, f32), viewport: (f32, f32)) {
         self.fit = FitMode::Free;
         self.offset.0 += delta.0;
         self.offset.1 += delta.1;
+        self.clamp_offset(image, viewport);
     }
 
-    pub fn zoom_at(&mut self, factor: f32, cursor: (f32, f32), viewport: (f32, f32)) {
+    pub fn zoom_at(
+        &mut self,
+        factor: f32,
+        cursor: (f32, f32),
+        image: (f32, f32),
+        viewport: (f32, f32),
+    ) {
         let new_zoom = (self.zoom * factor).clamp(0.01, 100.0);
         let actual = new_zoom / self.zoom;
         let center = (viewport.0 / 2.0, viewport.1 / 2.0);
@@ -124,5 +147,6 @@ impl ViewTransform {
         self.offset.1 -= from_center.1 * (actual - 1.0);
         self.zoom = new_zoom;
         self.fit = FitMode::Free;
+        self.clamp_offset(image, viewport);
     }
 }

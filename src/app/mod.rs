@@ -446,7 +446,8 @@ impl Render for RevealApp {
                     return;
                 };
                 let now = (f32::from(event.position.x), f32::from(event.position.y));
-                this.viewer.view.pan((now.0 - px_, now.1 - py));
+                let intrinsic = this.viewer.presentation.current_intrinsic();
+                this.viewer.view.pan((now.0 - px_, now.1 - py), intrinsic);
                 this.drag_from = Some(now);
                 cx.notify();
             }))
@@ -459,7 +460,8 @@ impl Render for RevealApp {
                     return;
                 }
                 let cursor = this.to_image_area(event.position);
-                this.viewer.view.zoom_at(1.1f32.powf(delta.clamp(-5.0, 5.0)), cursor);
+                let intrinsic = this.viewer.presentation.current_intrinsic();
+                this.viewer.view.zoom_at(1.1f32.powf(delta.clamp(-5.0, 5.0)), cursor, intrinsic);
                 cx.notify();
             }))
             .child(self.render_toolbar(p, window, cx))

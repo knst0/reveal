@@ -113,7 +113,9 @@ fn panning_switches_to_free_mode() {
     v.open(&dir.join("0.png")).unwrap();
     v.settle();
 
-    v.view.pan((25.0, -10.0));
+    let intrinsic = v.presentation.current_intrinsic();
+    v.view.zoom_at(4.0, (400.0, 300.0), intrinsic);
+    v.view.pan((25.0, -10.0), intrinsic);
     assert_eq!(v.view.transform.fit, FitMode::Free);
     assert_eq!(v.view.transform.offset, (25.0, -10.0));
     fs::remove_dir_all(&dir).unwrap();
@@ -242,9 +244,10 @@ fn deferred_reprepare_preserves_free_zoom_ratio() {
     v.open(&dir.join("big.png")).unwrap();
     v.settle();
 
-    v.view.pan((25.0, -10.0));
+    let intrinsic = v.presentation.current_intrinsic();
+    v.view.pan((25.0, -10.0), intrinsic);
     assert_eq!(v.view.transform.fit, FitMode::Free);
-    v.view.zoom_at(1.5, (320.0, 200.0));
+    v.view.zoom_at(1.5, (320.0, 200.0), intrinsic);
     let before = v.presentation.current_intrinsic().0 * v.view.transform.zoom;
 
     v.set_viewport(900.0, 600.0);
@@ -315,8 +318,9 @@ fn set_antialias_preserves_zoom_and_pan() {
     v.open(&dir.join("0.png")).unwrap();
     v.settle();
 
-    v.view.pan((25.0, -10.0));
-    v.view.zoom_at(1.5, (400.0, 300.0));
+    let intrinsic = v.presentation.current_intrinsic();
+    v.view.pan((25.0, -10.0), intrinsic);
+    v.view.zoom_at(1.5, (400.0, 300.0), intrinsic);
     let before = v.view.transform;
 
     v.set_antialias(false);

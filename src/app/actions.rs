@@ -28,12 +28,30 @@ impl RevealApp {
             Action::ImgOrig => self.viewer.set_fit(FitMode::Original),
             Action::ImgFit => self.viewer.set_fit(FitMode::Fit),
             Action::ImgFitBest => self.viewer.set_fit(FitMode::FitBest),
-            Action::PanUp => self.viewer.view.pan((0.0, 50.0)),
-            Action::PanDown => self.viewer.view.pan((0.0, -50.0)),
-            Action::PanLeft => self.viewer.view.pan((50.0, 0.0)),
-            Action::PanRight => self.viewer.view.pan((-50.0, 0.0)),
-            Action::ZoomIn => self.viewer.view.zoom_at(1.25, centre),
-            Action::ZoomOut => self.viewer.view.zoom_at(0.8, centre),
+            Action::PanUp => {
+                let image = self.viewer.presentation.current_intrinsic();
+                self.viewer.view.pan((0.0, 50.0), image);
+            }
+            Action::PanDown => {
+                let image = self.viewer.presentation.current_intrinsic();
+                self.viewer.view.pan((0.0, -50.0), image);
+            }
+            Action::PanLeft => {
+                let image = self.viewer.presentation.current_intrinsic();
+                self.viewer.view.pan((50.0, 0.0), image);
+            }
+            Action::PanRight => {
+                let image = self.viewer.presentation.current_intrinsic();
+                self.viewer.view.pan((-50.0, 0.0), image);
+            }
+            Action::ZoomIn => {
+                let image = self.viewer.presentation.current_intrinsic();
+                self.viewer.view.zoom_at(1.25, centre, image);
+            }
+            Action::ZoomOut => {
+                let image = self.viewer.presentation.current_intrinsic();
+                self.viewer.view.zoom_at(0.8, centre, image);
+            }
             Action::PlayAnim => self.viewer.toggle_play(),
             Action::PlayPresent => self.viewer.playback.set_state(PlaybackState::Present),
             Action::PlayPresentRandom => {

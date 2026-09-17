@@ -72,12 +72,16 @@ impl ViewState {
         self.transform.set_fit_with(fit, intrinsic, self.viewport, original_zoom);
     }
 
-    pub fn pan(&mut self, delta: (f32, f32)) {
-        self.transform.pan(delta);
+    pub fn pan(&mut self, delta: (f32, f32), image: (f32, f32)) {
+        self.transform.pan(delta, image, self.viewport);
     }
 
-    pub fn zoom_at(&mut self, factor: f32, cursor: (f32, f32)) {
-        self.transform.zoom_at(factor, cursor, self.viewport);
+    pub fn zoom_at(&mut self, factor: f32, cursor: (f32, f32), image: (f32, f32)) {
+        self.transform.zoom_at(factor, cursor, image, self.viewport);
+    }
+
+    pub fn clamp_view(&mut self, image: (f32, f32)) {
+        self.transform.clamp_offset(image, self.viewport);
     }
 }
 
@@ -286,6 +290,7 @@ impl Presentation {
             view.transform.zoom = zoom / ratio;
             view.transform.offset = offset;
         }
+        view.transform.clamp_offset(self.current_intrinsic(), view.viewport);
     }
 
     fn sync_magnification(&mut self, view: &ViewState) {
@@ -629,6 +634,8 @@ impl Viewer {
             self.reprepare_pending = true;
             if self.presentation.has_current() {
                 self.apply_current_fit();
+                let intrinsic = self.presentation.current_intrinsic();
+                self.view.clamp_view(intrinsic);
             }
         }
         changed

@@ -303,7 +303,7 @@ fn zoom_at_cursor_keeps_that_point_stationary() {
         ((cursor.0 - x) / w, (cursor.1 - y) / h)
     };
 
-    t.zoom_at(2.0, cursor, viewport);
+    t.zoom_at(2.0, cursor, image, viewport);
 
     let point_after = {
         let (x, y, w, h) = t.image_bounds(image, viewport);
@@ -404,4 +404,31 @@ fn webtoon_display_buffer_stays_paintable() {
         display.height
     );
     assert_eq!((display.width, display.height), downscaled_size((360, 9000), (1920.0, 1080.0)));
+}
+
+#[test]
+fn pan_stops_at_the_image_edge() {
+    let image = (1000.0, 1000.0);
+    let viewport = (500.0, 500.0);
+    let mut t = ViewTransform { zoom: 1.0, offset: (0.0, 0.0), fit: FitMode::Free };
+    t.pan((10_000.0, 0.0), image, viewport);
+    assert_eq!(t.offset.0, 250.0, "right edge pins the canvas");
+    t.pan((-10_000.0, -10_000.0), image, viewport);
+    assert_eq!(t.offset, (-250.0, -250.0), "left/top edge pins the canvas");
+}
+
+#[test]
+fn small_image_stays_centred_when_dragged() {
+    let mut t = ViewTransform { zoom: 1.0, offset: (0.0, 0.0), fit: FitMode::Free };
+    t.pan((50.0, -30.0), (200.0, 100.0), (600.0, 400.0));
+    assert_eq!(t.offset, (0.0, 0.0), "a fitting image has nowhere to scroll");
+}
+
+#[test]
+fn zoom_out_releases_the_canvas_back_to_centre() {
+    let image = (1000.0, 1000.0);
+    let viewport = (500.0, 500.0);
+    let mut t = ViewTransform { zoom: 2.0, offset: (250.0, 250.0), fit: FitMode::Free };
+    t.zoom_at(0.05, (250.0, 250.0), image, viewport);
+    assert_eq!(t.offset, (0.0, 0.0), "a shrunk image recentres");
 }
