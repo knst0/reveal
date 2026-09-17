@@ -317,13 +317,26 @@ pub fn orient_in_order(
     DecodedImage { rgba: out, width: out_w as u32, height: out_h as u32 }
 }
 
+/// Largest display-buffer edge in pixels. A single `RenderImage` must fit the
+/// GPU texture (`wgpu` default `max_texture_dimension_2d` is 8192); without
+/// this a 720x30000 webtoon strip keeps its full size and never paints.
+pub const MAX_DISPLAY_DIMENSION: u32 = 8192;
+
 pub const DOWNSCALE_BUDGET_BYTES: u64 = 512 * 1024 * 1024;
 
 pub fn downscaled_size(size: (u32, u32), display: (f32, f32)) -> (u32, u32) {
-    if !needs_downscale(size, display) {
+    if size.0 == 0 || size.1 == 0 {
         return size;
     }
-    let scale = (display.0 / size.0 as f32).max(display.1 / size.1 as f32).min(1.0);
+    let mut scale = 1.0;
+    if needs_downscale(size, display) {
+        scale = (display.0 / size.0 as f32).max(display.1 / size.1 as f32).min(1.0);
+    }
+    let longest = size.0.max(size.1) as f32;
+    scale = scale.min(MAX_DISPLAY_DIMENSION as f32 / longest).min(1.0);
+    if scale >= 1.0 {
+        return size;
+    }
     let mut width = ((size.0 as f32 * scale).round() as u32).clamp(1, size.0);
     let mut height = ((size.1 as f32 * scale).round() as u32).clamp(1, size.1);
     while width > 1 && height > 1 && (width as u64) * (height as u64) * 4 > DOWNSCALE_BUDGET_BYTES {

@@ -1,8 +1,9 @@
 use reveal::decode::{DecodedImage, Orientation};
 use reveal::render::{
-    ChannelOrder, FitMode, Resample, ViewTransform, apply_orientation, downscale_to_display,
-    downscale_to_display_with, fit_factor_to_budget, magnify_factor, magnify_nearest,
-    magnify_nearest_crop, needs_downscale, orient_in_order, to_bgra, to_render_image,
+    ChannelOrder, FitMode, MAX_DISPLAY_DIMENSION, Resample, ViewTransform, apply_orientation,
+    downscale_to_display, downscale_to_display_with, downscaled_size, fit_factor_to_budget,
+    magnify_factor, magnify_nearest, magnify_nearest_crop, needs_downscale, orient_in_order,
+    prepare_display, to_bgra, to_render_image,
 };
 
 #[test]
@@ -376,4 +377,31 @@ fn normal_orientation_is_a_passthrough() {
     let out = apply_orientation(&src, Orientation::Normal);
     assert_eq!(out.rgba, src.rgba);
     assert_eq!((out.width, out.height), (3, 5));
+}
+
+#[test]
+fn webtoon_strip_fits_the_texture_without_changing_shape() {
+    let source = (720, 30_000);
+    let out = downscaled_size(source, (1920.0, 1080.0));
+    assert!(
+        out.0 <= MAX_DISPLAY_DIMENSION && out.1 <= MAX_DISPLAY_DIMENSION,
+        "720x30000 must fit the GPU texture, got {out:?}"
+    );
+    assert!(out.0 <= source.0 && out.1 <= source.1, "must not enlarge, got {out:?}");
+    let ratio_in = source.0 as f32 / source.1 as f32;
+    let ratio_out = out.0 as f32 / out.1 as f32;
+    assert!((ratio_in - ratio_out).abs() < 0.01, "aspect preserved, got {out:?}");
+}
+
+#[test]
+fn webtoon_display_buffer_stays_paintable() {
+    let src = corner_marked(360, 9000);
+    let display = prepare_display(&src, Orientation::Normal, (1920.0, 1080.0), Resample::Filtered);
+    assert!(
+        display.width <= MAX_DISPLAY_DIMENSION && display.height <= MAX_DISPLAY_DIMENSION,
+        "display buffer must fit the GPU texture, got {}x{}",
+        display.width,
+        display.height
+    );
+    assert_eq!((display.width, display.height), downscaled_size((360, 9000), (1920.0, 1080.0)));
 }
