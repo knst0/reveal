@@ -106,6 +106,31 @@ fn antialias_toggle_persists_across_navigation() {
 }
 
 #[test]
+fn nearest_zoom_builds_its_full_res_base_lazily() {
+    let dir = large_fixture("lazybase", 1600, 1200);
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.set_antialias(false);
+    v.open(&dir.join("big.png")).unwrap();
+    v.settle();
+    assert!(v.render_image().is_some());
+    assert!(v.presentation.render_crop().is_none(), "fit zoom must not magnify");
+
+    let intrinsic = v.presentation.current_intrinsic();
+    v.view.zoom_at(8.0, (400.0, 300.0), intrinsic);
+    assert!(v.render_image().is_some());
+    assert!(
+        v.presentation.render_crop().is_some(),
+        "zooming in with Nearest must magnify from the lazily built base"
+    );
+
+    v.view.zoom_at(0.125, (400.0, 300.0), intrinsic);
+    let _ = v.render_image();
+    assert!(v.presentation.render_crop().is_none(), "zooming out must drop the magnification");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn panning_switches_to_free_mode() {
     let dir = fixture("pan", 1);
     let mut v = Viewer::new();

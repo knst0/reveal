@@ -194,7 +194,7 @@ impl Presentation {
         let physical = view.physical_viewport();
         let resample = view.resample;
 
-        let (render, intrinsic, source, base) = match &output.decoded {
+        let (render, intrinsic, source) = match &output.decoded {
             Decoded::Still(img) => {
                 let display = match output.display.as_ref() {
                     Some(d)
@@ -205,19 +205,17 @@ impl Presentation {
                     _ => Arc::new(prepare_display(img, output.orientation, physical, resample)),
                 };
                 let intrinsic = (display.width as f32 / dpr, display.height as f32 / dpr);
-                let base = if resample == Resample::Nearest {
-                    Some(oriented(img, output.orientation).into_owned())
-                } else {
-                    None
-                };
-                (display.render.clone(), intrinsic, display.source, base)
+                // The full-resolution `base` for nearest-neighbour magnification is
+                // materialized lazily in `sync_magnification`: most frames are viewed at
+                // zoom 1 where it would be a dead `width*height*4` copy.
+                (display.render.clone(), intrinsic, display.source)
             }
             Decoded::Animation(frames) => match frames.first() {
                 Some(f) => {
                     let size = oriented_size((f.image.width, f.image.height), output.orientation);
-                    (to_render_image(&output.decoded), (size.0 as f32, size.1 as f32), size, None)
+                    (to_render_image(&output.decoded), (size.0 as f32, size.1 as f32), size)
                 }
-                None => (to_render_image(&output.decoded), (0.0, 0.0), (0, 0), None),
+                None => (to_render_image(&output.decoded), (0.0, 0.0), (0, 0)),
             },
         };
 
@@ -228,7 +226,7 @@ impl Presentation {
             source,
             output,
             resample,
-            base,
+            base: None,
             magnified: None,
         }
     }
@@ -268,6 +266,11 @@ impl Presentation {
         self.prepared.keys().cloned().collect()
     }
 
+    /// True when every staged key is inside `keep`, without cloning the keys.
+    pub fn staged_within(&self, keep: &[PathBuf]) -> bool {
+        self.prepared.keys().all(|key| keep.contains(key))
+    }
+
     pub fn reprepare_current(&mut self, view: &mut ViewState) {
         self.prepared.clear();
         self.drop_magnification();
@@ -301,14 +304,20 @@ impl Presentation {
         let Some(current) = self.current.as_mut() else {
             return;
         };
-        let factor = if resample == Resample::Nearest && current.base.is_some() {
-            magnify_factor(zoom)
-        } else {
-            1
-        };
+        let factor = if resample == Resample::Nearest { magnify_factor(zoom) } else { 1 };
         if factor <= 1 {
             current.magnified = None;
+            // Release the full-resolution copy when it is not magnifying anything.
+            current.base = None;
             return;
+        }
+        if current.base.is_none() {
+            let Decoded::Still(img) = &current.output.decoded else {
+                current.magnified = None;
+                return;
+            };
+            let orientation = current.output.orientation;
+            current.base = Some(oriented(img, orientation).into_owned());
         }
         let Some(base) = current.base.as_ref() else {
             return;
@@ -754,7 +763,7 @@ impl Viewer {
             return false;
         }
         let window = self.session.window_paths();
-        self.presentation.staged_paths().iter().all(|key| window.contains(key))
+        self.presentation.staged_within(&window)
     }
 
     pub fn prepare_neighbours(&mut self) {
