@@ -15,7 +15,7 @@ use rav1d::src::lib::{
 use zenavif_parse::AvifParser;
 
 use super::{
-    DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame, Orientation, extension_of,
+    DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame, Orientation, has_extension,
 };
 
 pub struct AvifDecoder;
@@ -23,7 +23,7 @@ pub struct AvifDecoder;
 pub const AVIF_EXTENSIONS: &[&str] = &["avif", "avifs"];
 
 pub fn is_avif_extension(ext: &str) -> bool {
-    matches!(ext, "avif" | "avifs")
+    AVIF_EXTENSIONS.iter().any(|want| ext.eq_ignore_ascii_case(want))
 }
 
 fn looks_like_avif(bytes: &[u8]) -> bool {
@@ -493,7 +493,7 @@ impl Decoder for AvifDecoder {
     }
 
     fn probe(&self, req: &DecodeRequest<'_>) -> bool {
-        looks_like_avif(req.bytes) || extension_of(req.path).is_some_and(|e| is_avif_extension(&e))
+        looks_like_avif(req.bytes) || has_extension(req.path, AVIF_EXTENSIONS)
     }
 
     fn decode(&self, req: &DecodeRequest<'_>) -> Result<Decoded, DecodeError> {

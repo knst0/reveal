@@ -101,12 +101,34 @@ pub trait Decoder: Send + Sync {
 }
 
 fn decoders() -> Vec<&'static dyn Decoder> {
-    let mut list: Vec<&'static dyn Decoder> =
-        vec![&svg::SvgDecoder, &jxl::JxlDecoder, &avif::AvifDecoder];
     #[cfg(feature = "raw")]
-    list.push(&raw::RawDecoder);
-    list.push(&raster::RasterDecoder);
-    list
+    {
+        vec![
+            &svg::SvgDecoder,
+            &jxl::JxlDecoder,
+            &avif::AvifDecoder,
+            &raw::RawDecoder,
+            &raster::RasterDecoder,
+        ]
+    }
+    #[cfg(not(feature = "raw"))]
+    {
+        vec![&svg::SvgDecoder, &jxl::JxlDecoder, &avif::AvifDecoder, &raster::RasterDecoder]
+    }
+}
+
+/// Case-insensitive extension match without allocating a lowered `String`.
+/// Hot paths (`is_supported` per directory entry, decoder `probe` per load)
+/// call this instead of `extension_of`.
+pub fn has_extension(path: &Path, allowed: &[&str]) -> bool {
+    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    allowed.iter().any(|want| ext.eq_ignore_ascii_case(want))
+}
+
+fn path_extension(path: &Path) -> Option<&str> {
+    path.extension().and_then(|e| e.to_str())
 }
 
 pub fn decode(req: &DecodeRequest<'_>) -> Result<DecodeOutput, DecodeError> {
@@ -119,22 +141,22 @@ pub fn decode(req: &DecodeRequest<'_>) -> Result<DecodeOutput, DecodeError> {
 }
 
 pub fn extension_of(path: &Path) -> Option<String> {
-    path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase())
+    path_extension(path).map(|e| e.to_ascii_lowercase())
 }
 
 pub fn is_supported(path: &Path) -> bool {
-    let Some(ext) = extension_of(path) else {
+    let Some(ext) = path_extension(path) else {
         return false;
     };
-    if is_raster_extension(&ext)
-        || svg::is_svg_extension(&ext)
-        || jxl::is_jxl_extension(&ext)
-        || avif::is_avif_extension(&ext)
+    if is_raster_extension(ext)
+        || svg::is_svg_extension(ext)
+        || jxl::is_jxl_extension(ext)
+        || avif::is_avif_extension(ext)
     {
         return true;
     }
     #[cfg(feature = "raw")]
-    if raw::is_raw_extension(&ext) {
+    if raw::is_raw_extension(ext) {
         return true;
     }
     false
