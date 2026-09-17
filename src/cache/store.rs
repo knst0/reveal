@@ -140,28 +140,18 @@ impl CacheStore {
     }
 
     fn evict_to_fit(&mut self, current_index: usize) {
-        if self.used_bytes <= self.capacity_bytes {
-            return;
-        }
-        let mut candidates: Vec<(i64, PathBuf, usize)> = self
-            .entries
-            .values()
-            .filter(|e| e.index != current_index)
-            .map(|e| {
-                (
-                    keep_cost(e.index, current_index, self.direction),
-                    e.image.path.clone(),
-                    e.image.bytes,
-                )
-            })
-            .collect();
-        candidates.sort_by_key(|b| std::cmp::Reverse(b.0));
         while self.used_bytes > self.capacity_bytes {
-            let Some((_, path, bytes)) = candidates.pop() else {
+            let victim = self
+                .entries
+                .iter()
+                .filter(|(_, e)| e.index != current_index)
+                .min_by_key(|(_, e)| keep_cost(e.index, current_index, self.direction))
+                .map(|(path, _)| path.clone());
+            let Some(path) = victim else {
                 break;
             };
-            if self.entries.remove(&path).is_some() {
-                self.used_bytes -= bytes;
+            if let Some(entry) = self.entries.remove(&path) {
+                self.used_bytes -= entry.image.bytes;
             }
         }
     }

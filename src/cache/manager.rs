@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::{
@@ -10,13 +9,8 @@ use crate::directory::Directory;
 
 pub const PREFETCH_RADIUS: isize = 3;
 
-pub fn prefetch_offsets(radius: isize) -> Vec<isize> {
-    let mut offsets = Vec::new();
-    for step in 1..=radius.max(0) {
-        offsets.push(step);
-        offsets.push(-step);
-    }
-    offsets
+pub fn prefetch_offsets(radius: isize) -> impl Iterator<Item = isize> {
+    (1..=radius.max(0)).flat_map(|step| [step, -step])
 }
 
 pub struct ImageCache {
@@ -27,7 +21,6 @@ pub struct ImageCache {
     resample: crate::render::Resample,
     last_index: Option<usize>,
     length: usize,
-    sizes: HashMap<PathBuf, u64>,
 }
 
 impl Default for ImageCache {
@@ -50,7 +43,6 @@ impl ImageCache {
             resample: crate::render::Resample::Filtered,
             last_index: None,
             length: 0,
-            sizes: HashMap::new(),
         }
     }
 
@@ -90,29 +82,17 @@ impl ImageCache {
         if self.store.contains(path) || self.inflight.iter().any(|(p, _)| p == path) {
             return;
         }
-        if kind == RequestKind::Prefetch
-            && let Some(len) = self.file_size(path, size)
-        {
-            let remaining = self.store.capacity_bytes().saturating_sub(self.store.used_bytes());
-            if len as usize > remaining {
-                return;
+        if kind == RequestKind::Prefetch {
+            let len = size.or_else(|| std::fs::metadata(path).ok().map(|meta| meta.len()));
+            if let Some(len) = len {
+                let remaining = self.store.capacity_bytes().saturating_sub(self.store.used_bytes());
+                if (len as usize) > remaining {
+                    return;
+                }
             }
         }
-
         let id = self.loader.request(path.to_path_buf(), index, self.target, self.resample);
         self.inflight.push((path.to_path_buf(), id));
-    }
-
-    fn file_size(&mut self, path: &Path, hint: Option<u64>) -> Option<u64> {
-        if hint.is_some() {
-            return hint;
-        }
-        if let Some(size) = self.sizes.get(path) {
-            return Some(*size);
-        }
-        let len = std::fs::metadata(path).ok()?.len();
-        self.sizes.insert(path.to_path_buf(), len);
-        Some(len)
     }
 
     pub fn prefetch_neighbours(&mut self, dir: &Directory) {
@@ -149,6 +129,7 @@ impl ImageCache {
     pub fn cancel_outside_window(&mut self, index: usize) {
         let radius = PREFETCH_RADIUS.max(0) as usize;
         let dropped = self.loader.cancel_far_from(index, radius);
+        let dropped: std::collections::HashSet<RequestId> = dropped.into_iter().collect();
         self.inflight.retain(|(_, id)| !dropped.contains(id));
     }
 
@@ -158,10 +139,15 @@ impl ImageCache {
     }
 
     pub fn cancel_far_from(&mut self, keep: &[PathBuf]) {
-        let keep_ids: Vec<RequestId> =
-            self.inflight.iter().filter(|(p, _)| keep.contains(p)).map(|(_, id)| *id).collect();
+        let keep: std::collections::HashSet<&Path> = keep.iter().map(PathBuf::as_path).collect();
+        let keep_ids: Vec<RequestId> = self
+            .inflight
+            .iter()
+            .filter(|(p, _)| keep.contains(p.as_path()))
+            .map(|(_, id)| *id)
+            .collect();
         self.loader.cancel_all_except(&keep_ids);
-        self.inflight.retain(|(p, _)| keep.contains(p));
+        self.inflight.retain(|(p, _)| keep.contains(p.as_path()));
     }
 
     pub fn pump(&mut self, current_index: usize) -> Vec<(PathBuf, Result<(), DecodeError>)> {

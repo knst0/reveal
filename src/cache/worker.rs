@@ -108,6 +108,7 @@ impl Loader {
     pub fn cancel_all_except(&self, keep: &[RequestId]) {
         let (lock, _) = &*self.shared;
         let mut queue = lock.lock().unwrap();
+        let keep: HashSet<RequestId> = keep.iter().copied().collect();
         let dropped: Vec<RequestId> =
             queue.pending.iter().filter(|r| !keep.contains(&r.id)).map(|r| r.id).collect();
         queue.pending.retain(|r| keep.contains(&r.id));
