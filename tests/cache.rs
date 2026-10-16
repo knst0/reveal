@@ -299,6 +299,10 @@ fn requests_outside_the_prefetch_window_are_cancelled() {
         cache.request(&dir.join(format!("{n:02}.png")), n);
     }
     cache.cancel_outside_window(0);
+    // Only queued requests can be cancelled: if this thread stalls while
+    // queueing, the worker finishes far requests whose results are already
+    // delivered. Absorb them, as the app does, before counting.
+    cache.pump(0);
 
     let d = Directory::open_at(&dir.join("00.png")).unwrap();
     cache.sync_to_directory(&d);
