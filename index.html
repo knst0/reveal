@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reveal Flatpak repository</title>
+    <style>
+      body {
+        font: 16px/1.6 system-ui, sans-serif;
+        max-width: 40rem;
+        margin: 4rem auto;
+        padding: 0 1rem;
+      }
+      code, pre {
+        font-family: ui-monospace, monospace;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 1rem;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Reveal Flatpak repository</h1>
+    <p>Add the repository and install:</p>
+    <pre><code>flatpak remote-add --if-not-exists reveal \
+  https://knst0.github.io/reveal/reveal.flatpakrepo
+flatpak install reveal io.github.knst0.reveal</code></pre>
+    <p><a href="https://github.com/knst0/reveal">Source</a></p>
+  </body>
+</html>
