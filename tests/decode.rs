@@ -140,7 +140,7 @@ fn decodes_avif_still() {
         Decoded::Still(img) => {
             assert_eq!((img.width, img.height), (48, 24));
             assert_eq!(img.rgba.len(), 48 * 24 * 4);
-            for px in img.rgba.chunks_exact(4) {
+            for px in img.rgba.as_chunks::<4>().0 {
                 assert_eq!(px[3], 255);
                 let (r, g, b) = (i32::from(px[0]), i32::from(px[1]), i32::from(px[2]));
                 assert!((r - 200).abs() <= 8, "red {r} is not close to 200");
@@ -164,7 +164,7 @@ fn renders_svg_text_with_system_fonts() {
     let path = Path::new("text.svg");
     let out = decode::decode(&req(path, svg)).unwrap();
     let Decoded::Still(img) = out.decoded else { panic!("expected still") };
-    let dark = img.rgba.chunks_exact(4).filter(|p| p[0] < 128 && p[3] > 0).count();
+    let dark = img.rgba.as_chunks::<4>().0.iter().filter(|p| p[0] < 128 && p[3] > 0).count();
     assert!(dark > 0, "svg <text> rendered no glyph pixels");
 }
 
