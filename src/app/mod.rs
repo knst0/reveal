@@ -7,12 +7,13 @@ pub mod titlebar;
 mod toolbar;
 mod update_toast;
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use gpui::{
     App, AppContext, Bounds, Context, ExternalPaths, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, Render, Styled, Subscription, Window, WindowBounds,
+    MouseDownEvent, ParentElement, Render, RenderImage, Styled, Subscription, Window, WindowBounds,
     WindowDecorations, WindowHandle, WindowOptions, div, px, size,
 };
 use reveal::actions::Theme;
@@ -59,6 +60,10 @@ pub struct RevealApp {
     resize_settling: bool,
     timer_active: bool,
     scan_forwarded: u64,
+    /// Last image handed to the image element. gpui keeps every painted
+    /// `RenderImage` in the window's sprite atlas until `drop_image`, so the
+    /// previous one is evicted whenever it is replaced.
+    painted: Option<Arc<RenderImage>>,
 }
 
 pub struct AppInit {
@@ -97,6 +102,7 @@ impl RevealApp {
             resize_settling: false,
             timer_active: false,
             scan_forwarded: 0,
+            painted: None,
             theme,
             viewer,
         };
@@ -466,7 +472,7 @@ impl Render for RevealApp {
                 cx.notify();
             }))
             .child(self.render_toolbar(p, window, cx))
-            .child(self.render_image_area(cx))
+            .child(self.render_image_area(window, cx))
             .child(self.render_status_bar(p, cx))
             .children(self.context_menu.map(|at| self.render_context_menu(at, p, cx)))
             .children(
@@ -499,13 +505,26 @@ impl RevealApp {
         (f32::from(position.x), f32::from(position.y) - toolbar)
     }
 
-    fn render_image_area(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_image_area(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let image = self.viewer.render_image();
+        let replaced = match (&self.painted, &image) {
+            (Some(old), Some(new)) => !Arc::ptr_eq(old, new),
+            (old, _) => old.is_some(),
+        };
+        if replaced && let Some(old) = self.painted.take() {
+            cx.drop_image(old, Some(window));
+        }
+        self.painted.clone_from(&image);
         div()
             .flex_grow(1.)
             .relative()
             .overflow_hidden()
             .child(ImageElement::new(
-                self.viewer.render_image(),
+                image,
                 self.viewer.presentation.current_intrinsic(),
                 self.viewer.view.transform,
                 self.viewer.playback.frame_index(),

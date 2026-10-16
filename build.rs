@@ -193,7 +193,7 @@ fn locked_version(lock: &toml::Value, crate_name: &str, requirement: &str) -> Op
 }
 
 fn satisfies(version: &str, requirement: &str) -> bool {
-    let requirement = requirement.trim_start_matches(['^', '=', ' ']);
+    let requirement = requirement.trim_start_matches(['^', '=', '~', ' ']);
     if requirement.is_empty() {
         return true;
     }
