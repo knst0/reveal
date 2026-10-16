@@ -1,5 +1,35 @@
 # reveal
 
+## 0.5.0
+
+### Minor Changes
+
+- a04d0a2: Add about page tab in settings with links to repository, licenses and technical information.
+- 205b13d: Draw the window header ourselves on every platform. The toolbar now doubles as
+  the titlebar.
+- a0fcce1: Reload the shown image when another program modifies it on disk: the file's size and modification time are polled every 250 ms, and once a new stamp is stable across two polls the image is re-decoded and re-rendered in place. Smooth scaling is now off by default.
+- 205b13d: Open settings in their own window instead of an overlay panel.
+- 205b13d: Rework the toolbar and the status bar. Text labels are replaced by icons, the
+  toolbar is reduced to previous, next and settings, and the zoom controls move
+  next to the zoom percentage in the status bar. The status bar can no longer be
+  hidden.
+- 205b13d: Add an interface scale setting. The whole interface can be rendered at 88%, 100%,
+  125% or 150%.
+
+### Patch Changes
+
+- 6a654f6: Fix memory growth when the shown image is replaced: the previous image is now evicted from the GPU sprite atlas instead of being kept for the lifetime of the window. Most visible with on-disk reload, where every save of the watched file retained another full display buffer.
+- 72a3021: Trim cache bookkeeping overhead: yield prefetch offsets from an iterator instead of a fresh `Vec`, drop the unbounded `ImageCache::sizes` map in favour of the directory's bounded size hints, filter cancel sets with hash sets, and evict the cheapest entry without cloning every key and sorting.
+- 3629938: Pan is free: dragging moves the canvas exactly where dropped, with no edge
+  resistance. Zoom stays relative to the image: the point under the cursor
+  stays put, and a zoomed-out canvas recentres instead of drifting away.
+- 55388df: Cut per-file allocations on the decode path: match extensions case-insensitively without lowering a `String`, resolve the raster format from the path, and move decoded pixels with `into_rgba8` instead of copying them with `to_rgba8`.
+- 46d21af: Fix the macOS build by holding gpui at 1.18.x: gpui 1.19.2–1.20.2 cannot compile its Metal shader bindings from the crates.io registry.
+- 21d5bd0: Defer the full-resolution `Nearest` base until magnification actually needs it: preparing a frame no longer clones a dead `width*height*4` copy for zoom-1 views, and zooming out releases it again. Also check staged keys against the window without cloning them into a throwaway `Vec`.
+- 58f39e2: Fix webtoon strips rendering as blank: the display buffer kept the full
+  720x30000 size, which exceeds the GPU texture limit. The long edge is now
+  capped at 8192px with the aspect ratio preserved.
+
 ## 0.4.2
 
 ### Patch Changes
