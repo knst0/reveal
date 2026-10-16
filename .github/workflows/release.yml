@@ -83,6 +83,7 @@ jobs:
     needs: prepare
     permissions:
       contents: read
+      checks: write
     uses: ./.github/workflows/check.yml
     with:
       ref: ${{ needs.prepare.outputs.sha }}
