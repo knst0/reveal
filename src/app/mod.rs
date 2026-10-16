@@ -30,7 +30,7 @@ use settings_window::{SettingsWindow, WINDOW_HEIGHT, WINDOW_WIDTH};
 enum Wake {
     Cache(reveal::cache::LoadResult),
     Scan(u64, std::io::Result<reveal::directory::Directory>),
-    DropPoll,
+    Poll,
     Refresh,
 }
 
@@ -198,7 +198,7 @@ impl RevealApp {
                 .spawn_dedicated(move |_| async move {
                     loop {
                         std::thread::sleep(Duration::from_millis(250));
-                        if tx.unbounded_send(Wake::DropPoll).is_err() {
+                        if tx.unbounded_send(Wake::Poll).is_err() {
                             break;
                         }
                     }
@@ -268,10 +268,12 @@ impl RevealApp {
                     cx.notify();
                 }
             }
-            Wake::DropPoll => {
+            Wake::Poll => {
                 let requested = reveal::drop::take_requested();
                 if !requested.is_empty() {
                     self.open_dropped(&requested);
+                    cx.notify();
+                } else if self.viewer.reload_if_source_changed() {
                     cx.notify();
                 }
             }

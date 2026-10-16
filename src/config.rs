@@ -29,7 +29,7 @@ pub struct ConfigWindow {
 
 impl Default for ConfigWindow {
     fn default() -> Self {
-        Self { dark: true, antialias: true, start_fullscreen: false, ui_scale: UiScale::default() }
+        Self { dark: true, antialias: false, start_fullscreen: false, ui_scale: UiScale::default() }
     }
 }
 

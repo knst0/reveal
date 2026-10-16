@@ -72,6 +72,24 @@ fn modified_of(dir: &Path) -> Option<SystemTime> {
     std::fs::metadata(dir).ok()?.modified().ok()
 }
 
+/// Identity of a file's contents as seen by the filesystem: a change in either
+/// field means the bytes on disk may no longer match what was decoded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileStamp {
+    pub modified: Option<SystemTime>,
+    pub len: u64,
+}
+
+impl FileStamp {
+    pub fn of(path: &Path) -> Option<Self> {
+        std::fs::metadata(path).ok().map(|meta| Self::from_metadata(&meta))
+    }
+
+    pub fn from_metadata(meta: &std::fs::Metadata) -> Self {
+        Self { modified: meta.modified().ok(), len: meta.len() }
+    }
+}
+
 impl Directory {
     pub fn empty() -> Self {
         Self::default()

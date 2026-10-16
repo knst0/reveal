@@ -36,6 +36,31 @@ fn opens_an_image_and_indexes_its_directory() {
 }
 
 #[test]
+fn reloads_the_shown_file_once_its_change_on_disk_settles() {
+    let dir = fixture("reload", 2);
+    let path = dir.join("0.png");
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&path).unwrap();
+    v.settle();
+    assert_eq!(v.presentation.current_source_size(), (300, 200));
+    assert!(!v.reload_if_source_changed(), "an untouched file is not reloaded");
+
+    let img = image::RgbaImage::from_pixel(120, 80, image::Rgba([1, 2, 3, 255]));
+    image::DynamicImage::ImageRgba8(img).save(&path).unwrap();
+
+    assert!(!v.reload_if_source_changed(), "the first sighting of a change only arms it");
+    assert_eq!(v.presentation.current_source_size(), (300, 200));
+    assert!(v.reload_if_source_changed(), "a stable change triggers a reload");
+    v.settle();
+
+    assert_eq!(v.presentation.current_path().unwrap(), path);
+    assert_eq!(v.presentation.current_source_size(), (120, 80));
+    assert!(!v.reload_if_source_changed(), "the reloaded stamp becomes the baseline");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn navigates_forward_and_wraps() {
     let dir = fixture("nav", 3);
     let mut v = Viewer::new();

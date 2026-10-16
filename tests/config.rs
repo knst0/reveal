@@ -39,7 +39,7 @@ fn partial_config_keeps_defaults_for_absent_fields() {
     let cfg = Configuration::load_from(&path);
     assert!(!cfg.window.dark, "explicit value honoured");
     assert!(!cfg.window.start_fullscreen, "absent field keeps its default");
-    assert!(cfg.window.antialias);
+    assert!(!cfg.window.antialias, "smooth scaling is off by default");
     fs::remove_dir_all(&dir).unwrap();
 }
 

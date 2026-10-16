@@ -30,6 +30,7 @@ fn fake(path: &str, bytes: usize) -> CachedImage {
             orientation: Orientation::Normal,
             display: None,
         }),
+        stamp: None,
     }
 }
 

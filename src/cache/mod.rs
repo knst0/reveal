@@ -24,6 +24,8 @@ pub struct CachedImage {
     pub path: PathBuf,
     pub output: Arc<DecodeOutput>,
     pub bytes: usize,
+    /// Source file identity taken from the same handle the bytes were read from.
+    pub stamp: Option<crate::directory::FileStamp>,
 }
 
 impl CachedImage {

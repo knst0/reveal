@@ -7,7 +7,7 @@ use rand::seq::IndexedRandom;
 
 use crate::cache::ImageCache;
 use crate::decode::{Decoded, DecodedImage};
-use crate::directory::{Directory, Navigation};
+use crate::directory::{Directory, FileStamp, Navigation};
 use crate::playback::{Playback, PlaybackState};
 use crate::render::{
     FitMode, Resample, ViewTransform, fit_factor_to_budget, into_render_image_still,
@@ -260,6 +260,10 @@ impl Presentation {
 
     pub fn retain_prepared(&mut self, keep: &[PathBuf]) {
         self.prepared.retain(|p, _| keep.contains(p));
+    }
+
+    pub fn unstage(&mut self, path: &Path) {
+        self.prepared.remove(path);
     }
 
     pub fn staged_paths(&self) -> Vec<PathBuf> {
@@ -605,6 +609,17 @@ pub struct Viewer {
     pub presentation: Presentation,
     pub session: Session,
     reprepare_pending: bool,
+    watch: Option<SourceWatch>,
+}
+
+/// Tracks the on-disk identity of the shown file so edits made by other
+/// programs are picked up. A change is acted on only once the same new stamp
+/// is seen on two consecutive polls, so a file still being written is not
+/// decoded half-way.
+struct SourceWatch {
+    path: PathBuf,
+    seen: Option<FileStamp>,
+    candidate: Option<FileStamp>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -627,6 +642,7 @@ impl Viewer {
             presentation: Presentation::new(),
             session: Session::new(),
             reprepare_pending: false,
+            watch: None,
         }
     }
 
@@ -973,6 +989,42 @@ impl Viewer {
             );
         }
         None
+    }
+
+    /// Polls the shown file and re-decodes it when its contents changed on disk.
+    /// Returns true when a reload was requested.
+    pub fn reload_if_source_changed(&mut self) -> bool {
+        let Some(path) = self.session.directory.current().map(Path::to_path_buf) else {
+            self.watch = None;
+            return false;
+        };
+        if self.session.pending().is_some()
+            || self.presentation.current_path().is_some_and(|shown| shown != path)
+        {
+            return false;
+        }
+        let now = FileStamp::of(&path);
+        if self.watch.as_ref().is_none_or(|watch| watch.path != path) {
+            let seen = self.session.cache.get(&path).and_then(|c| c.stamp).or(now);
+            self.watch = Some(SourceWatch { path: path.clone(), seen, candidate: None });
+        }
+        let Some(watch) = self.watch.as_mut() else {
+            return false;
+        };
+        if now.is_none() || now == watch.seen {
+            watch.candidate = None;
+            return false;
+        }
+        if watch.candidate != now {
+            watch.candidate = now;
+            return false;
+        }
+        watch.seen = now;
+        watch.candidate = None;
+        self.session.forget(&path);
+        self.presentation.unstage(&path);
+        self.session.request(&path);
+        true
     }
 
     pub fn delete_current(&mut self) {
