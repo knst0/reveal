@@ -18,7 +18,7 @@ use image::{Delay, Frame, RgbaImage};
 use crate::decode::{Decoded, DecodedImage, Orientation};
 
 fn rgba_to_bgra(buffer: &mut [u8]) {
-    for px in buffer.chunks_exact_mut(4) {
+    for px in buffer.as_chunks_mut::<4>().0 {
         px.swap(0, 2);
     }
 }
@@ -184,7 +184,7 @@ pub fn magnify_nearest_crop(
     for y in 0..ch {
         let src_row = &image.rgba[((cy + y) * src_w + cx) * 4..][..cw * 4];
         let (first, rest) = out[y * f * row_bytes..].split_at_mut(row_bytes);
-        for (x, px) in src_row.chunks_exact(4).enumerate() {
+        for (x, px) in src_row.as_chunks::<4>().0.iter().enumerate() {
             let block = &mut first[x * f * 4..(x * f + f) * 4];
             block[..4].copy_from_slice(px);
             let mut done = 4;
@@ -251,7 +251,7 @@ pub fn orient_in_order(
         if !swap {
             return image.clone();
         }
-        for (d, s) in out.chunks_exact_mut(4).zip(src.chunks_exact(4)) {
+        for (d, s) in out.as_chunks_mut::<4>().0.iter_mut().zip(src.as_chunks::<4>().0) {
             put(d, s);
         }
         return DecodedImage { rgba: out, width: image.width, height: image.height };

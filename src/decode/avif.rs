@@ -347,7 +347,7 @@ fn clamp8(v: f32) -> u8 {
 }
 
 fn unpremultiply(image: &mut DecodedImage) {
-    for px in image.rgba.chunks_exact_mut(4) {
+    for px in image.rgba.as_chunks_mut::<4>().0 {
         let a = u32::from(px[3]);
         if a == 0 || a == 255 {
             continue;

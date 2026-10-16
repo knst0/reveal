@@ -6,7 +6,7 @@ use reveal::render::{Resample, downscale_to_display_with};
 
 fn synthetic(width: u32, height: u32) -> DecodedImage {
     let mut rgba = vec![0u8; (width as usize) * (height as usize) * 4];
-    for (i, px) in rgba.chunks_exact_mut(4).enumerate() {
+    for (i, px) in rgba.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         let x = (i % width as usize) as u32;
         let y = (i / width as usize) as u32;
         px[0] = (x ^ y) as u8;
