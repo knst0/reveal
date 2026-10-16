@@ -6,8 +6,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use manager::ImageCache;
-pub use store::CacheStore;
+pub use store::{CacheStore, NavigationDirection};
 pub use worker::{LoadResult, Loader};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestKind {
+    Explicit,
+    Prefetch,
+}
 
 use crate::decode::{DecodeOutput, Orientation};
 
@@ -18,6 +24,8 @@ pub struct CachedImage {
     pub path: PathBuf,
     pub output: Arc<DecodeOutput>,
     pub bytes: usize,
+    /// Source file identity taken from the same handle the bytes were read from.
+    pub stamp: Option<crate::directory::FileStamp>,
 }
 
 impl CachedImage {

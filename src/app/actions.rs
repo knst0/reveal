@@ -28,12 +28,18 @@ impl RevealApp {
             Action::ImgOrig => self.viewer.set_fit(FitMode::Original),
             Action::ImgFit => self.viewer.set_fit(FitMode::Fit),
             Action::ImgFitBest => self.viewer.set_fit(FitMode::FitBest),
-            Action::PanUp => self.viewer.pan((0.0, 50.0)),
-            Action::PanDown => self.viewer.pan((0.0, -50.0)),
-            Action::PanLeft => self.viewer.pan((50.0, 0.0)),
-            Action::PanRight => self.viewer.pan((-50.0, 0.0)),
-            Action::ZoomIn => self.viewer.zoom_at(1.25, centre),
-            Action::ZoomOut => self.viewer.zoom_at(0.8, centre),
+            Action::PanUp => self.viewer.view.pan((0.0, 50.0)),
+            Action::PanDown => self.viewer.view.pan((0.0, -50.0)),
+            Action::PanLeft => self.viewer.view.pan((50.0, 0.0)),
+            Action::PanRight => self.viewer.view.pan((-50.0, 0.0)),
+            Action::ZoomIn => {
+                let image = self.viewer.presentation.current_intrinsic();
+                self.viewer.view.zoom_at(1.25, centre, image);
+            }
+            Action::ZoomOut => {
+                let image = self.viewer.presentation.current_intrinsic();
+                self.viewer.view.zoom_at(0.8, centre, image);
+            }
             Action::PlayAnim => self.viewer.toggle_play(),
             Action::PlayPresent => self.viewer.playback.set_state(PlaybackState::Present),
             Action::PlayPresentRandom => {
@@ -48,17 +54,16 @@ impl RevealApp {
                     self.viewer.delete_current();
                 } else {
                     self.confirm_delete =
-                        self.viewer.current_path().map(std::path::Path::to_path_buf);
+                        self.viewer.presentation.current_path().map(std::path::Path::to_path_buf);
                 }
             }
             Action::ToggleAntialias => self.viewer.toggle_antialias(),
             Action::ToggleTheme => self.theme = self.theme.toggled(),
-            Action::ToggleBottomBar => self.show_bottom_bar = !self.show_bottom_bar,
             Action::Settings => {
-                if self.settings.is_some() {
-                    self.close_settings();
+                if self.settings_window.is_some() {
+                    self.close_settings(cx);
                 } else {
-                    self.open_settings();
+                    self.open_settings(cx);
                 }
             }
             Action::Escape => {
@@ -66,8 +71,6 @@ impl RevealApp {
                     self.context_menu = None;
                 } else if self.zoom_menu_open {
                     self.zoom_menu_open = false;
-                } else if self.settings.is_some() {
-                    self.close_settings();
                 } else {
                     self.viewer.playback.set_state(PlaybackState::Paused);
                 }
@@ -81,7 +84,7 @@ impl RevealApp {
             return;
         }
         self.dialog_open = true;
-        let start_in = reveal::dialog::start_directory(self.viewer.current_path());
+        let start_in = reveal::dialog::start_directory(self.viewer.presentation.current_path());
         cx.spawn(async move |this, cx| {
             let picked = if folder {
                 reveal::dialog::pick_folder(start_in).await
@@ -101,7 +104,7 @@ impl RevealApp {
     }
 
     pub fn copy_current(&mut self) {
-        if let Some(output) = self.viewer.current_output()
+        if let Some(output) = self.viewer.presentation.current_output()
             && let Err(e) = reveal::actions::copy_to_clipboard(&output.decoded, output.orientation)
         {
             log::error!("copy failed: {e}");
@@ -116,7 +119,7 @@ impl RevealApp {
     }
 
     pub fn reveal_current(&self) {
-        if let Some(path) = self.viewer.current_path()
+        if let Some(path) = self.viewer.presentation.current_path()
             && let Err(e) = open::that_detached(path.parent().unwrap_or(path))
         {
             log::error!("reveal failed: {e}");
@@ -130,31 +133,18 @@ impl RevealApp {
             shift: event.keystroke.modifiers.shift,
         };
 
-        if let Some(state) = self.settings.as_mut()
-            && state.capturing.is_some()
-        {
-            if state.capture_key(&event.keystroke.key, modifiers) {
-                cx.notify();
-            }
-            return;
-        }
-
         let Some(action) = self.bindings.action_for(&event.keystroke.key, modifiers) else {
             return;
         };
 
-        if self.settings.is_some() && !matches!(action, Action::Escape | Action::Settings) {
-            return;
-        }
-
-        let centre = (self.viewer.viewport.0 / 2.0, self.viewer.viewport.1 / 2.0);
+        let centre = (self.viewer.view.viewport.0 / 2.0, self.viewer.view.viewport.1 / 2.0);
         if self.apply_action(action, centre, window, cx) {
             cx.notify();
         }
     }
 
     pub fn run(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
-        let centre = (self.viewer.viewport.0 / 2.0, self.viewer.viewport.1 / 2.0);
+        let centre = (self.viewer.view.viewport.0 / 2.0, self.viewer.view.viewport.1 / 2.0);
         self.apply_action(action, centre, window, cx);
         cx.notify();
     }
@@ -170,7 +160,7 @@ impl RevealApp {
     }
 
     pub fn delete_confirmed(&self) -> bool {
-        match (self.confirm_delete.as_deref(), self.viewer.current_path()) {
+        match (self.confirm_delete.as_deref(), self.viewer.presentation.current_path()) {
             (Some(pending), Some(current)) => pending == current,
             _ => false,
         }
@@ -180,27 +170,27 @@ impl RevealApp {
         if self.delete_confirmed() {
             return "Delete to trash? Press Delete again to confirm, Esc to cancel".to_owned();
         }
-        if let Some(status) = self.viewer.status() {
+        if let Some(status) = self.viewer.session.status() {
             return status.to_owned();
         }
-        match self.viewer.current_path() {
+        match self.viewer.presentation.current_path() {
             Some(path) => path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
             None => "No image".to_owned(),
         }
     }
 
     pub fn position_label(&self) -> Option<String> {
-        self.viewer.current_path().map(|_| {
+        self.viewer.presentation.current_path().map(|_| {
             format!(
                 "{} of {}",
-                self.viewer.directory.current_index() + 1,
-                self.viewer.directory.len().max(1)
+                self.viewer.session.directory.current_index() + 1,
+                self.viewer.session.directory.len().max(1)
             )
         })
     }
 
     pub fn dimensions_label(&self) -> Option<String> {
-        let (w, h) = self.viewer.current_source_size();
+        let (w, h) = self.viewer.presentation.current_source_size();
         (w > 0 && h > 0).then(|| format!("{w} \u{00d7} {h}"))
     }
 }

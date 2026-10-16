@@ -3,6 +3,8 @@ use gpui::{
     Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
     div, px,
 };
+use reveal::icons::Icon;
+use reveal::input::Action;
 use reveal::render::FitMode;
 use reveal::ui::{self, MenuItem, Palette};
 
@@ -28,26 +30,53 @@ impl RevealApp {
             )
             .child(
                 div()
-                    .id("zoom")
-                    .relative()
+                    .flex()
+                    .gap_1()
+                    .items_center()
+                    .child(self.toolbar_button(
+                        "sb-zoom-out",
+                        Icon::Minus,
+                        Action::ZoomOut,
+                        false,
+                        p,
+                        cx,
+                    ))
                     .child(
-                        ui::tool_button("zoom-btn", p, self.zoom_menu_open)
-                            .child(zoom_pct)
-                            .on_click(cx.listener(|this, _e, _w, cx| {
-                                this.zoom_menu_open = !this.zoom_menu_open;
-                                cx.notify();
+                        div()
+                            .id("zoom")
+                            .relative()
+                            .child(
+                                ui::tool_button("zoom-btn", p, self.zoom_menu_open)
+                                    .child(zoom_pct)
+                                    .on_click(cx.listener(|this, _e, _w, cx| {
+                                        this.zoom_menu_open = !this.zoom_menu_open;
+                                        cx.notify();
+                                    })),
+                            )
+                            .children(self.zoom_menu_open.then(|| {
+                                div().absolute().bottom(px(32.)).right_0().child(
+                                    ui::menu_surface(p)
+                                        .occlude()
+                                        .min_w(px(160.))
+                                        .child(zoom_menu_item(cx, "Fit to Window", FitMode::Fit, p))
+                                        .child(zoom_menu_item(cx, "Fit Best", FitMode::FitBest, p))
+                                        .child(zoom_menu_item(
+                                            cx,
+                                            "Original Size",
+                                            FitMode::Original,
+                                            p,
+                                        )),
+                                )
                             })),
                     )
-                    .children(self.zoom_menu_open.then(|| {
-                        div().absolute().bottom(px(28.)).right_0().child(
-                            ui::menu_surface(p)
-                                .occlude()
-                                .min_w(px(160.))
-                                .child(zoom_menu_item(cx, "Fit to Window", FitMode::Fit, p))
-                                .child(zoom_menu_item(cx, "Fit Best", FitMode::FitBest, p))
-                                .child(zoom_menu_item(cx, "Original Size", FitMode::Original, p)),
-                        )
-                    })),
+                    .child(self.toolbar_button(
+                        "sb-zoom-in",
+                        Icon::Plus,
+                        Action::ZoomIn,
+                        false,
+                        p,
+                        cx,
+                    )),
             )
     }
 }

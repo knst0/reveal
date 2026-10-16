@@ -2,7 +2,7 @@ use rawler::decoders::RawDecodeParams;
 use rawler::imgop::develop::RawDevelop;
 use rawler::rawsource::RawSource;
 
-use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, extension_of};
+use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, has_extension};
 
 pub struct RawDecoder;
 
@@ -12,11 +12,11 @@ pub const RAW_EXTENSIONS: &[&str] = &[
 ];
 
 pub fn is_raw_extension(ext: &str) -> bool {
-    RAW_EXTENSIONS.contains(&ext)
+    RAW_EXTENSIONS.iter().any(|want| ext.eq_ignore_ascii_case(want))
 }
 
 fn to_decoded(image: image::DynamicImage) -> DecodedImage {
-    let rgba = image.to_rgba8();
+    let rgba = image.into_rgba8();
     DecodedImage { width: rgba.width(), height: rgba.height(), rgba: rgba.into_raw() }
 }
 
@@ -26,7 +26,7 @@ impl Decoder for RawDecoder {
     }
 
     fn probe(&self, req: &DecodeRequest<'_>) -> bool {
-        extension_of(req.path).is_some_and(|e| is_raw_extension(&e))
+        has_extension(req.path, RAW_EXTENSIONS)
             && rawler::get_decoder(&RawSource::new_from_slice(req.bytes)).is_ok()
     }
 

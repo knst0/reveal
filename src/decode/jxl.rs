@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use jxl_oxide::JxlImage;
 
-use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame, extension_of};
+use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame, has_extension};
 
 pub struct JxlDecoder;
 
@@ -13,7 +13,7 @@ const CONTAINER_SIGNATURE: [u8; 12] =
 pub const JXL_EXTENSIONS: &[&str] = &["jxl"];
 
 pub fn is_jxl_extension(ext: &str) -> bool {
-    ext == "jxl"
+    ext.eq_ignore_ascii_case("jxl")
 }
 
 fn looks_like_jxl(bytes: &[u8]) -> bool {
@@ -46,7 +46,7 @@ impl Decoder for JxlDecoder {
     }
 
     fn probe(&self, req: &DecodeRequest<'_>) -> bool {
-        looks_like_jxl(req.bytes) || extension_of(req.path).is_some_and(|e| is_jxl_extension(&e))
+        looks_like_jxl(req.bytes) || has_extension(req.path, JXL_EXTENSIONS)
     }
 
     fn decode(&self, req: &DecodeRequest<'_>) -> Result<Decoded, DecodeError> {

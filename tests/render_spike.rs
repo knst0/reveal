@@ -1,8 +1,9 @@
-use reveal::decode::DecodedImage;
+use reveal::decode::{DecodedImage, Orientation};
 use reveal::render::{
-    FitMode, Resample, ViewTransform, downscale_to_display, downscale_to_display_with,
-    fit_factor_to_budget, magnify_factor, magnify_nearest, magnify_nearest_crop, needs_downscale,
-    to_bgra, to_render_image,
+    ChannelOrder, FitMode, MAX_DISPLAY_DIMENSION, Resample, ViewTransform, apply_orientation,
+    downscale_to_display, downscale_to_display_with, downscaled_size, fit_factor_to_budget,
+    magnify_factor, magnify_nearest, magnify_nearest_crop, needs_downscale, orient_in_order,
+    prepare_display, to_bgra, to_render_image,
 };
 
 #[test]
@@ -108,6 +109,33 @@ fn magnify_nearest_replicates_pixels_into_hard_blocks() {
         }
     }
     assert_eq!(magnify_nearest(&src, 1).rgba, src.rgba);
+}
+
+#[test]
+fn fused_bgra_orientation_matches_orient_then_swap_for_all_arms() {
+    let src = DecodedImage {
+        rgba: vec![
+            10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255, 100, 110, 120, 255, 130, 140, 150,
+            255, 160, 170, 180, 255,
+        ],
+        width: 3,
+        height: 2,
+    };
+
+    for orientation in
+        [Orientation::Normal, Orientation::Rotate90, Orientation::FlipH, Orientation::FlipV]
+    {
+        let fused = orient_in_order(&src, orientation, ChannelOrder::Bgra);
+        let rgba = apply_orientation(&src, orientation);
+        let two_pass = to_bgra(&rgba);
+        assert_eq!(
+            fused.rgba,
+            *two_pass.as_raw(),
+            "fused BGRA diverged from orient-then-swap for {orientation:?}"
+        );
+        assert_eq!(fused.width, two_pass.width(), "width for {orientation:?}");
+        assert_eq!(fused.height, two_pass.height(), "height for {orientation:?}");
+    }
 }
 
 fn concentric_rings(w: u32, h: u32) -> DecodedImage {
@@ -275,7 +303,7 @@ fn zoom_at_cursor_keeps_that_point_stationary() {
         ((cursor.0 - x) / w, (cursor.1 - y) / h)
     };
 
-    t.zoom_at(2.0, cursor, viewport);
+    t.zoom_at(2.0, cursor, image, viewport);
 
     let point_after = {
         let (x, y, w, h) = t.image_bounds(image, viewport);
@@ -333,6 +361,14 @@ fn horizontal_flip_mirrors_without_resizing() {
 }
 
 #[test]
+fn normal_orientation_fused_bgra_still_swaps() {
+    let src = DecodedImage { rgba: vec![1, 2, 3, 4, 5, 6, 7, 8], width: 2, height: 1 };
+    let fused = orient_in_order(&src, Orientation::Normal, ChannelOrder::Bgra);
+    let expected = to_bgra(&src);
+    assert_eq!(fused.rgba, *expected.as_raw());
+}
+
+#[test]
 fn normal_orientation_is_a_passthrough() {
     use reveal::decode::Orientation;
     use reveal::render::apply_orientation;
@@ -341,4 +377,59 @@ fn normal_orientation_is_a_passthrough() {
     let out = apply_orientation(&src, Orientation::Normal);
     assert_eq!(out.rgba, src.rgba);
     assert_eq!((out.width, out.height), (3, 5));
+}
+
+#[test]
+fn webtoon_strip_fits_the_texture_without_changing_shape() {
+    let source = (720, 30_000);
+    let out = downscaled_size(source, (1920.0, 1080.0));
+    assert!(
+        out.0 <= MAX_DISPLAY_DIMENSION && out.1 <= MAX_DISPLAY_DIMENSION,
+        "720x30000 must fit the GPU texture, got {out:?}"
+    );
+    assert!(out.0 <= source.0 && out.1 <= source.1, "must not enlarge, got {out:?}");
+    let ratio_in = source.0 as f32 / source.1 as f32;
+    let ratio_out = out.0 as f32 / out.1 as f32;
+    assert!((ratio_in - ratio_out).abs() < 0.01, "aspect preserved, got {out:?}");
+}
+
+#[test]
+fn webtoon_display_buffer_stays_paintable() {
+    let src = corner_marked(360, 9000);
+    let display = prepare_display(&src, Orientation::Normal, (1920.0, 1080.0), Resample::Filtered);
+    assert!(
+        display.width <= MAX_DISPLAY_DIMENSION && display.height <= MAX_DISPLAY_DIMENSION,
+        "display buffer must fit the GPU texture, got {}x{}",
+        display.width,
+        display.height
+    );
+    assert_eq!((display.width, display.height), downscaled_size((360, 9000), (1920.0, 1080.0)));
+}
+
+#[test]
+fn pan_is_free_and_never_clamps() {
+    let image = (1000.0, 1000.0);
+    let viewport = (500.0, 500.0);
+    let mut t = ViewTransform { zoom: 1.0, offset: (0.0, 0.0), fit: FitMode::Free };
+    t.pan((10_000.0, 0.0));
+    assert_eq!(t.offset.0, 10_000.0, "drag must not hit a wall");
+    t.pan((-20_000.0, -20_000.0));
+    assert_eq!(t.offset, (-10_000.0, -20_000.0), "drag stays exactly where dropped");
+    let _ = (image, viewport);
+}
+
+#[test]
+fn small_image_pans_freely() {
+    let mut t = ViewTransform { zoom: 1.0, offset: (0.0, 0.0), fit: FitMode::Free };
+    t.pan((50.0, -30.0));
+    assert_eq!(t.offset, (50.0, -30.0), "a fitting image still follows the drag");
+}
+
+#[test]
+fn zoom_out_releases_the_canvas_back_to_centre() {
+    let image = (1000.0, 1000.0);
+    let viewport = (500.0, 500.0);
+    let mut t = ViewTransform { zoom: 2.0, offset: (250.0, 250.0), fit: FitMode::Free };
+    t.zoom_at(0.05, (250.0, 250.0), image, viewport);
+    assert_eq!(t.offset, (0.0, 0.0), "a shrunk image recentres");
 }

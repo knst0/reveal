@@ -1,3 +1,4 @@
+pub mod about;
 pub mod actions;
 pub mod associations;
 pub mod cache;
@@ -7,6 +8,7 @@ pub mod dialog;
 pub mod directory;
 pub mod drop;
 pub mod formats;
+pub mod icons;
 pub mod input;
 pub mod panic_report;
 pub mod playback;

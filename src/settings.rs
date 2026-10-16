@@ -1,10 +1,11 @@
-use crate::config::{Channel, Configuration};
+use crate::config::{Channel, Configuration, UiScale};
 use crate::input::{Action, Binding, Bindings, Modifiers};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
     General,
     Keys,
+    About,
 }
 
 impl SettingsTab {
@@ -12,16 +13,17 @@ impl SettingsTab {
         match self {
             Self::General => "General",
             Self::Keys => "Keyboard",
+            Self::About => "About",
         }
     }
 }
 
-pub const SETTINGS_TABS: &[SettingsTab] = &[SettingsTab::General, SettingsTab::Keys];
+pub const SETTINGS_TABS: &[SettingsTab] =
+    &[SettingsTab::General, SettingsTab::Keys, SettingsTab::About];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToggleField {
     Dark,
-    ShowBottomBar,
     Antialias,
     StartFullscreen,
     UpdateCheck,
@@ -32,7 +34,6 @@ impl ToggleField {
     pub fn label(self) -> &'static str {
         match self {
             Self::Dark => "Dark theme",
-            Self::ShowBottomBar => "Show status bar",
             Self::Antialias => "Smooth scaling",
             Self::StartFullscreen => "Start fullscreen",
             Self::UpdateCheck => "Check for updates",
@@ -43,7 +44,6 @@ impl ToggleField {
     pub fn description(self) -> &'static str {
         match self {
             Self::Dark => "Use the dark palette for the interface.",
-            Self::ShowBottomBar => "Display the status bar along the bottom edge.",
             Self::Antialias => "Filter images when they are scaled.",
             Self::StartFullscreen => "Open new windows in fullscreen.",
             Self::UpdateCheck => "Look for new releases on startup.",
@@ -54,7 +54,6 @@ impl ToggleField {
     pub fn get(self, config: &Configuration) -> bool {
         match self {
             Self::Dark => config.window.dark,
-            Self::ShowBottomBar => config.window.show_bottom_bar,
             Self::Antialias => config.window.antialias,
             Self::StartFullscreen => config.window.start_fullscreen,
             Self::UpdateCheck => config.updates.check,
@@ -65,7 +64,6 @@ impl ToggleField {
     pub fn set(self, config: &mut Configuration, value: bool) {
         match self {
             Self::Dark => config.window.dark = value,
-            Self::ShowBottomBar => config.window.show_bottom_bar = value,
             Self::Antialias => config.window.antialias = value,
             Self::StartFullscreen => config.window.start_fullscreen = value,
             Self::UpdateCheck => config.updates.check = value,
@@ -81,12 +79,8 @@ impl ToggleField {
     }
 }
 
-pub const APPEARANCE_FIELDS: &[ToggleField] = &[
-    ToggleField::Dark,
-    ToggleField::ShowBottomBar,
-    ToggleField::Antialias,
-    ToggleField::StartFullscreen,
-];
+pub const APPEARANCE_FIELDS: &[ToggleField] =
+    &[ToggleField::Dark, ToggleField::Antialias, ToggleField::StartFullscreen];
 
 pub const UPDATE_FIELDS: &[ToggleField] =
     &[ToggleField::UpdateCheck, ToggleField::UpdateAutoInstall];
@@ -148,6 +142,13 @@ impl SettingsState {
     pub fn set_channel(&mut self, channel: Channel) {
         if self.config.updates.channel != channel {
             self.config.updates.channel = channel;
+            self.dirty = true;
+        }
+    }
+
+    pub fn set_ui_scale(&mut self, scale: UiScale) {
+        if self.config.window.ui_scale != scale {
+            self.config.window.ui_scale = scale;
             self.dirty = true;
         }
     }

@@ -1,3 +1,5 @@
+use reveal::directory::Navigation;
+use reveal::viewer::Viewer;
 use std::time::{Duration, Instant};
 
 use reveal::decode::{Decoded, DecodedImage, Frame};
@@ -93,4 +95,72 @@ fn presentation_is_inert_while_merely_playing() {
     let mut p = Playback::default();
     p.set_state(PlaybackState::Playing);
     assert!(!p.present_due(Instant::now() + Duration::from_secs(60)));
+}
+
+fn anim_fixture(tag: &str, count: u32) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("reveal-paused-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for i in 0..count {
+        let mut bytes = Vec::new();
+        {
+            let mut enc = image::codecs::gif::GifEncoder::new(&mut bytes);
+            enc.set_repeat(image::codecs::gif::Repeat::Infinite).unwrap();
+            for _ in 0..3 {
+                let buf = image::RgbaImage::from_pixel(8, 8, image::Rgba([i as u8, 0, 255, 255]));
+                enc.encode_frame(image::Frame::from_parts(
+                    buf,
+                    0,
+                    0,
+                    image::Delay::from_numer_denom_ms(100, 1),
+                ))
+                .unwrap();
+            }
+        }
+        std::fs::write(dir.join(format!("{i}.gif")), &bytes).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn opening_a_folder_clears_the_paused_set() {
+    let dir = anim_fixture("clear", 2);
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&dir.join("0.gif")).unwrap();
+    v.settle();
+
+    v.toggle_play();
+    assert_eq!(v.playback.state, PlaybackState::Paused);
+    assert_eq!(v.playback.paused_count(), 1);
+
+    v.open(&dir.join("1.gif")).unwrap();
+    v.settle();
+    assert_eq!(v.playback.paused_count(), 0, "open must not carry the paused set forward");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn pause_state_survives_navigating_away_and_back() {
+    let dir = anim_fixture("roundtrip", 2);
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&dir.join("0.gif")).unwrap();
+    v.settle();
+
+    v.toggle_play();
+    assert_eq!(v.playback.state, PlaybackState::Paused);
+
+    v.navigate(Navigation::Next);
+    v.settle();
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("1.gif"));
+    assert_eq!(v.playback.state, PlaybackState::Playing, "a fresh image plays");
+
+    v.navigate(Navigation::Prev);
+    v.settle();
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("0.gif"));
+    assert_eq!(v.playback.state, PlaybackState::Paused, "returning restores the paused state");
+
+    std::fs::remove_dir_all(&dir).unwrap();
 }

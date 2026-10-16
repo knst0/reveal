@@ -75,7 +75,6 @@ pub fn action_label(action: Action) -> &'static str {
         Action::ToggleFullscreen => "Toggle Fullscreen",
         Action::ToggleAntialias => "Toggle Smoothing",
         Action::ToggleTheme => "Toggle Theme",
-        Action::ToggleBottomBar => "Toggle Status Bar",
         Action::Settings => "Settings",
         Action::Escape => "Cancel / Close",
     }

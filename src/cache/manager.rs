@@ -1,26 +1,26 @@
 use std::path::{Path, PathBuf};
 
-use super::{CacheStore, CachedImage, DEFAULT_CAPACITY_BYTES, Loader, RequestId};
+use super::{
+    CacheStore, CachedImage, DEFAULT_CAPACITY_BYTES, LoadResult, Loader, NavigationDirection,
+    RequestId, RequestKind,
+};
 use crate::decode::DecodeError;
 use crate::directory::Directory;
 
 pub const PREFETCH_RADIUS: isize = 3;
 
-pub fn prefetch_offsets(radius: isize) -> Vec<isize> {
-    let mut offsets = Vec::new();
-    for step in 1..=radius.max(0) {
-        offsets.push(step);
-        offsets.push(-step);
-    }
-    offsets
+pub fn prefetch_offsets(radius: isize) -> impl Iterator<Item = isize> {
+    (1..=radius.max(0)).flat_map(|step| [step, -step])
 }
 
 pub struct ImageCache {
     store: CacheStore,
-    loader: Loader,
+    loader: std::sync::Arc<Loader>,
     inflight: Vec<(PathBuf, RequestId)>,
     target: (u32, u32),
     resample: crate::render::Resample,
+    last_index: Option<usize>,
+    length: usize,
 }
 
 impl Default for ImageCache {
@@ -37,10 +37,12 @@ impl ImageCache {
     pub fn new(capacity_bytes: usize, threads: usize) -> Self {
         Self {
             store: CacheStore::new(capacity_bytes),
-            loader: Loader::new(threads),
+            loader: std::sync::Arc::new(Loader::new(threads)),
             inflight: Vec::new(),
             target: (0, 0),
             resample: crate::render::Resample::Filtered,
+            last_index: None,
+            length: 0,
         }
     }
 
@@ -60,13 +62,34 @@ impl ImageCache {
         &self.store
     }
 
+    pub fn loader_handle(&self) -> std::sync::Arc<Loader> {
+        std::sync::Arc::clone(&self.loader)
+    }
+
     pub fn get(&self, path: &Path) -> Option<&CachedImage> {
         self.store.get(path)
     }
 
     pub fn request(&mut self, path: &Path, index: usize) {
+        self.request_with(path, index, RequestKind::Explicit, None);
+    }
+
+    pub fn request_as(&mut self, path: &Path, index: usize, kind: RequestKind) {
+        self.request_with(path, index, kind, None);
+    }
+
+    fn request_with(&mut self, path: &Path, index: usize, kind: RequestKind, size: Option<u64>) {
         if self.store.contains(path) || self.inflight.iter().any(|(p, _)| p == path) {
             return;
+        }
+        if kind == RequestKind::Prefetch {
+            let len = size.or_else(|| std::fs::metadata(path).ok().map(|meta| meta.len()));
+            if let Some(len) = len {
+                let remaining = self.store.capacity_bytes().saturating_sub(self.store.used_bytes());
+                if (len as usize) > remaining {
+                    return;
+                }
+            }
         }
         let id = self.loader.request(path.to_path_buf(), index, self.target, self.resample);
         self.inflight.push((path.to_path_buf(), id));
@@ -86,7 +109,8 @@ impl ImageCache {
             }
             if let Some(path) = dir.path_at(index) {
                 let path = path.to_path_buf();
-                self.request(&path, index);
+                let size = dir.size_at(index);
+                self.request_with(&path, index, RequestKind::Prefetch, size);
             }
         }
     }
@@ -96,12 +120,16 @@ impl ImageCache {
     }
 
     pub fn set_current_index(&mut self, index: usize) {
+        let direction = NavigationDirection::from_transition(self.last_index, index, self.length);
+        self.last_index = Some(index);
+        self.store.set_direction(direction);
         self.loader.set_current_index(index);
     }
 
     pub fn cancel_outside_window(&mut self, index: usize) {
         let radius = PREFETCH_RADIUS.max(0) as usize;
         let dropped = self.loader.cancel_far_from(index, radius);
+        let dropped: std::collections::HashSet<RequestId> = dropped.into_iter().collect();
         self.inflight.retain(|(_, id)| !dropped.contains(id));
     }
 
@@ -111,26 +139,40 @@ impl ImageCache {
     }
 
     pub fn cancel_far_from(&mut self, keep: &[PathBuf]) {
-        let keep_ids: Vec<RequestId> =
-            self.inflight.iter().filter(|(p, _)| keep.contains(p)).map(|(_, id)| *id).collect();
+        let keep: std::collections::HashSet<&Path> = keep.iter().map(PathBuf::as_path).collect();
+        let keep_ids: Vec<RequestId> = self
+            .inflight
+            .iter()
+            .filter(|(p, _)| keep.contains(p.as_path()))
+            .map(|(_, id)| *id)
+            .collect();
         self.loader.cancel_all_except(&keep_ids);
-        self.inflight.retain(|(p, _)| keep.contains(p));
+        self.inflight.retain(|(p, _)| keep.contains(p.as_path()));
     }
 
     pub fn pump(&mut self, current_index: usize) -> Vec<(PathBuf, Result<(), DecodeError>)> {
         let mut events = Vec::new();
         while let Some(result) = self.loader.try_recv() {
-            self.inflight.retain(|(_, id)| *id != result.id);
-            match result.outcome {
-                Ok(image) => {
-                    let path = image.path.clone();
-                    self.store.insert(image, result.index, current_index);
-                    events.push((path, Ok(())));
-                }
-                Err(e) => events.push((result.path, Err(e))),
-            }
+            events.push(self.absorb(result, current_index));
         }
         events
+    }
+
+    pub fn absorb(
+        &mut self,
+        result: LoadResult,
+        current_index: usize,
+    ) -> (PathBuf, Result<(), DecodeError>) {
+        let LoadResult { id, index, path, outcome } = result;
+        self.inflight.retain(|(_, request)| *request != id);
+        match outcome {
+            Ok(image) => {
+                let path = image.path.clone();
+                self.store.insert(image, index, current_index);
+                (path, Ok(()))
+            }
+            Err(e) => (path, Err(e)),
+        }
     }
 
     pub fn drain_one(
@@ -141,15 +183,7 @@ impl ImageCache {
             return None;
         }
         let result = self.loader.recv()?;
-        self.inflight.retain(|(_, id)| *id != result.id);
-        match result.outcome {
-            Ok(image) => {
-                let path = image.path.clone();
-                self.store.insert(image, result.index, current_index);
-                Some((path, Ok(())))
-            }
-            Err(e) => Some((result.path, Err(e))),
-        }
+        Some(self.absorb(result, current_index))
     }
 
     pub fn block_on(&mut self, path: &Path, index: usize) -> Result<&CachedImage, DecodeError> {
@@ -170,7 +204,8 @@ impl ImageCache {
     }
 
     pub fn sync_to_directory(&mut self, dir: &Directory) {
-        self.store.reindex(|p| dir.entries().iter().position(|e| e.as_path() == p));
+        self.length = dir.len();
+        self.store.reindex(|p| dir.index_of_path(p));
     }
 }
 

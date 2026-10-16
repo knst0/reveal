@@ -1,6 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    Div, Hsla, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled, div, px, rgb,
+    Div, Hsla, InteractiveElement, ParentElement, Rems, StatefulInteractiveElement, Styled, div,
+    rems, rgb,
 };
 
 use crate::actions::Theme;
@@ -8,6 +9,7 @@ use crate::actions::Theme;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Palette {
     pub background: u32,
+    pub bar: u32,
     pub surface: u32,
     pub elevated: u32,
     pub border: u32,
@@ -18,10 +20,12 @@ pub struct Palette {
     pub element_hover: u32,
     pub element_active: u32,
     pub danger: u32,
+    pub close_hover: u32,
 }
 
 pub const DARK: Palette = Palette {
     background: 0x1a1a1a,
+    bar: 0x222222,
     surface: 0x222222,
     elevated: 0x2a2a2a,
     border: 0x3a3a3a,
@@ -32,10 +36,12 @@ pub const DARK: Palette = Palette {
     element_hover: 0x323232,
     element_active: 0x3c3c3c,
     danger: 0xcc7a72,
+    close_hover: 0xc42b1c,
 };
 
 pub const LIGHT: Palette = Palette {
     background: 0xfafafa,
+    bar: 0xf0f0ee,
     surface: 0xf0f0ee,
     elevated: 0xffffff,
     border: 0xd8d8d5,
@@ -46,47 +52,58 @@ pub const LIGHT: Palette = Palette {
     element_hover: 0xe8e8e6,
     element_active: 0xdfdfdc,
     danger: 0xd36151,
+    close_hover: 0xc42b1c,
 };
 
 pub fn palette(theme: Theme) -> Palette {
     if theme.is_dark() { DARK } else { LIGHT }
 }
 
-pub const TOOLBAR_HEIGHT: f32 = 32.0;
-pub const STATUS_BAR_HEIGHT: f32 = 26.0;
+pub const BASE_REM: f32 = 16.0;
+
+pub fn rem(design_px: f32) -> Rems {
+    rems(design_px / BASE_REM)
+}
+
+pub const TOOLBAR_HEIGHT: f32 = 40.0;
+pub const STATUS_BAR_HEIGHT: f32 = 34.0;
+pub const BUTTON_SIZE: f32 = 24.0;
+pub const CAPTION_BUTTON_WIDTH: f32 = 46.0;
 
 pub fn color(value: u32) -> Hsla {
     rgb(value).into()
 }
 
 pub fn toolbar(p: Palette) -> Div {
+    let pad_right = cfg!(target_os = "macos");
     div()
-        .h(px(TOOLBAR_HEIGHT))
+        .h(rem(TOOLBAR_HEIGHT))
         .flex_shrink_0()
-        .px_1()
+        .pl_3()
+        .when(pad_right, |s| s.pr_3())
         .flex()
         .items_center()
-        .gap_px()
-        .bg(color(p.surface))
+        .gap_1()
+        .bg(color(p.bar))
         .border_b_1()
         .border_color(color(p.border))
         .text_color(color(p.text))
-        .text_size(px(12.))
+        .text_size(rem(13.))
 }
 
 pub fn status_bar(p: Palette) -> Div {
     div()
-        .h(px(STATUS_BAR_HEIGHT))
+        .h(rem(STATUS_BAR_HEIGHT))
         .flex_shrink_0()
-        .px_2()
+        .px_3()
         .flex()
         .items_center()
-        .gap_2()
-        .bg(color(p.surface))
+        .gap_3()
+        .bg(color(p.bar))
         .border_t_1()
         .border_color(color(p.border))
         .text_color(color(p.text_muted))
-        .text_size(px(12.))
+        .text_size(rem(13.))
 }
 
 pub fn tool_button(id: &'static str, p: Palette, active: bool) -> gpui::Stateful<Div> {
@@ -100,13 +117,14 @@ pub fn tool_button_dyn(
 ) -> gpui::Stateful<Div> {
     div()
         .id(id)
-        .px_2()
-        .h(px(24.))
+        .px_1()
+        .h(rem(BUTTON_SIZE))
+        .min_w(rem(BUTTON_SIZE))
         .flex()
         .items_center()
         .justify_center()
         .gap_1()
-        .rounded(px(4.))
+        .rounded(rem(6.))
         .text_color(if active { color(p.text_accent) } else { color(p.text) })
         .when(active, |s| s.bg(color(p.element_active)))
         .hover(|s| s.bg(color(p.element_hover)))
@@ -114,26 +132,26 @@ pub fn tool_button_dyn(
 }
 
 pub fn separator(p: Palette) -> Div {
-    div().w(px(1.)).h(px(16.)).mx_1().bg(color(p.border_variant))
+    div().w(rem(1.)).h(rem(18.)).mx_1().bg(color(p.border_variant))
 }
 
 pub fn menu_surface(p: Palette) -> Div {
     div()
         .py_1()
-        .min_w(px(220.))
+        .min_w(rem(220.))
         .flex()
         .flex_col()
         .bg(color(p.elevated))
         .border_1()
         .border_color(color(p.border))
-        .rounded(px(6.))
+        .rounded(rem(8.))
         .shadow_lg()
-        .text_size(px(12.))
+        .text_size(rem(13.))
         .text_color(color(p.text))
 }
 
 pub fn menu_separator(p: Palette) -> Div {
-    div().my_1().h(px(1.)).bg(color(p.border_variant))
+    div().my_1().h(rem(1.)).bg(color(p.border_variant))
 }
 
 pub struct MenuItem {
@@ -182,17 +200,17 @@ impl MenuItem {
             .id(self.id)
             .mx_1()
             .px_2()
-            .h(px(24.))
+            .h(rem(28.))
             .flex()
             .items_center()
             .gap_4()
-            .rounded(px(4.))
+            .rounded(rem(4.))
             .text_color(text)
             .when(!self.disabled, |s| s.hover(|s| s.bg(color(p.element_hover))))
             .child(div().flex_grow(1.).child(self.label))
             .children(
                 self.keybinding.map(|keys| {
-                    div().text_color(color(p.text_muted)).text_size(px(11.)).child(keys)
+                    div().text_color(color(p.text_muted)).text_size(rem(12.)).child(keys)
                 }),
             )
     }
@@ -203,22 +221,22 @@ pub fn overlay_panel(p: Palette) -> Div {
         .bg(color(p.elevated))
         .border_1()
         .border_color(color(p.border))
-        .rounded(px(8.))
+        .rounded(rem(8.))
         .shadow_lg()
         .text_color(color(p.text))
 }
 
 pub fn panel_header(p: Palette, title: impl Into<gpui::SharedString>) -> Div {
     div()
-        .px_3()
-        .h(px(32.))
+        .px_4()
+        .h(rem(38.))
         .flex()
         .flex_shrink_0()
         .items_center()
         .bg(color(p.surface))
         .border_b_1()
         .border_color(color(p.border))
-        .text_size(px(13.))
+        .text_size(rem(14.))
         .text_color(color(p.text))
         .child(title.into())
 }
@@ -230,11 +248,11 @@ pub fn toast_container() -> Div {
 }
 
 pub fn toast(p: Palette) -> Div {
-    overlay_panel(p).w(px(TOAST_WIDTH)).flex().flex_col().gap_2().p_3().text_size(px(12.))
+    overlay_panel(p).w(rem(TOAST_WIDTH)).flex().flex_col().gap_2().p_3().text_size(rem(13.))
 }
 
 pub fn toast_title(p: Palette, text: impl Into<gpui::SharedString>) -> Div {
-    div().text_size(px(13.)).text_color(color(p.text_accent)).child(text.into())
+    div().text_size(rem(14.)).text_color(color(p.text_accent)).child(text.into())
 }
 
 pub fn toast_body(p: Palette, text: impl Into<gpui::SharedString>) -> Div {
@@ -263,12 +281,12 @@ pub fn toast_button_dyn(
     div()
         .id(id)
         .px_2()
-        .h(px(20.))
+        .h(rem(24.))
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(4.))
-        .text_size(px(11.))
+        .rounded(rem(6.))
+        .text_size(rem(12.))
         .bg(color(if primary { p.element_active } else { p.surface }))
         .text_color(color(if primary { p.text_accent } else { p.text }))
         .hover(|s| s.bg(color(p.element_hover)))
@@ -280,12 +298,12 @@ pub fn chip(id: impl Into<gpui::ElementId>, p: Palette, active: bool) -> gpui::S
     div()
         .id(id)
         .px_2()
-        .h(px(20.))
+        .h(rem(24.))
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(4.))
-        .text_size(px(11.))
+        .rounded(rem(6.))
+        .text_size(rem(12.))
         .bg(color(if active { p.element_active } else { p.surface }))
         .text_color(color(if active { p.text_accent } else { p.text }))
         .hover(|s| s.bg(color(p.element_hover)))
@@ -295,12 +313,12 @@ pub fn chip(id: impl Into<gpui::ElementId>, p: Palette, active: bool) -> gpui::S
 pub fn static_chip(p: Palette, active: bool) -> Div {
     div()
         .px_2()
-        .h(px(20.))
+        .h(rem(24.))
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(4.))
-        .text_size(px(11.))
+        .rounded(rem(6.))
+        .text_size(rem(12.))
         .bg(color(if active { p.element_active } else { p.surface }))
         .text_color(color(if active { p.text_accent } else { p.text }))
 }

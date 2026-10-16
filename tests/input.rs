@@ -147,3 +147,41 @@ fn exported_overrides_reproduce_the_same_bindings() {
         );
     }
 }
+
+#[test]
+fn all_actions_lists_every_action() {
+    assert_eq!(reveal::input::ALL_ACTIONS.len(), 24);
+}
+
+#[test]
+fn action_names_are_the_on_disk_format() {
+    for (action, expected) in [
+        (Action::FileOpen, "file_open"),
+        (Action::FolderOpen, "folder_open"),
+        (Action::ImgNext, "img_next"),
+        (Action::ImgPrev, "img_prev"),
+        (Action::ImgOrig, "img_orig"),
+        (Action::ImgFit, "img_fit"),
+        (Action::ImgFitBest, "img_fit_best"),
+        (Action::ImgDel, "img_del"),
+        (Action::ImgCopy, "img_copy"),
+        (Action::ImgPaste, "img_paste"),
+        (Action::PanUp, "pan_up"),
+        (Action::PanDown, "pan_down"),
+        (Action::PanLeft, "pan_left"),
+        (Action::PanRight, "pan_right"),
+        (Action::ZoomIn, "zoom_in"),
+        (Action::ZoomOut, "zoom_out"),
+        (Action::PlayAnim, "play_anim"),
+        (Action::PlayPresent, "play_present"),
+        (Action::PlayPresentRandom, "play_present_random"),
+        (Action::ToggleFullscreen, "toggle_fullscreen"),
+        (Action::ToggleAntialias, "toggle_antialias"),
+        (Action::ToggleTheme, "toggle_theme"),
+        (Action::Settings, "settings"),
+        (Action::Escape, "escape"),
+    ] {
+        assert_eq!(action.name(), expected);
+        assert_eq!(Action::from_name(expected), Some(action));
+    }
+}

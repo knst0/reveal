@@ -61,7 +61,13 @@ fn main() {
         };
         let view = cx
             .open_window(
-                WindowOptions { window_bounds: Some(window_bounds), ..Default::default() },
+                WindowOptions {
+                    window_bounds: Some(window_bounds),
+                    titlebar: Some(app::titlebar::titlebar_options("Reveal")),
+                    window_decorations: Some(gpui::WindowDecorations::Client),
+                    app_owns_titlebar_drag: true,
+                    ..Default::default()
+                },
                 |window, cx| {
                     let view = cx.new(|cx| RevealApp::new(init, cx));
                     window.focus(&view.read(cx).focus.clone(), cx);

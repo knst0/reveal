@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -14,6 +15,8 @@ pub enum Navigation {
 pub struct Directory {
     dir: PathBuf,
     entries: Vec<PathBuf>,
+    index: HashMap<PathBuf, usize>,
+    sizes: Vec<Option<u64>>,
     current: usize,
     last_modified: Option<SystemTime>,
 }
@@ -24,6 +27,18 @@ fn sort_entries(entries: &mut [PathBuf]) {
         let b = b.file_name().unwrap_or_default().to_string_lossy();
         lexical_sort::natural_lexical_cmp(&a, &b)
     });
+}
+
+fn build_index(entries: &[PathBuf]) -> HashMap<PathBuf, usize> {
+    let mut index = HashMap::with_capacity(entries.len());
+    for (i, path) in entries.iter().enumerate() {
+        index.entry(path.clone()).or_insert(i);
+    }
+    index
+}
+
+fn build_sizes(entries: &[PathBuf]) -> Vec<Option<u64>> {
+    entries.iter().map(|path| std::fs::metadata(path).ok().map(|meta| meta.len())).collect()
 }
 
 fn read_entries(dir: &Path) -> io::Result<Vec<PathBuf>> {
@@ -57,6 +72,24 @@ fn modified_of(dir: &Path) -> Option<SystemTime> {
     std::fs::metadata(dir).ok()?.modified().ok()
 }
 
+/// Identity of a file's contents as seen by the filesystem: a change in either
+/// field means the bytes on disk may no longer match what was decoded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileStamp {
+    pub modified: Option<SystemTime>,
+    pub len: u64,
+}
+
+impl FileStamp {
+    pub fn of(path: &Path) -> Option<Self> {
+        std::fs::metadata(path).ok().map(|meta| Self::from_metadata(&meta))
+    }
+
+    pub fn from_metadata(meta: &std::fs::Metadata) -> Self {
+        Self { modified: meta.modified().ok(), len: meta.len() }
+    }
+}
+
 impl Directory {
     pub fn empty() -> Self {
         Self::default()
@@ -65,7 +98,9 @@ impl Directory {
     pub fn single(path: &Path) -> Self {
         let (dir, file) = split_target(path);
         let entries: Vec<PathBuf> = file.into_iter().collect();
-        Self { last_modified: None, dir, entries, current: 0 }
+        let index = build_index(&entries);
+        let sizes = build_sizes(&entries);
+        Self { last_modified: None, dir, entries, index, sizes, current: 0 }
     }
 
     pub fn open_at(path: &Path) -> io::Result<Self> {
@@ -73,8 +108,10 @@ impl Directory {
 
         let entries = read_entries(&dir)?;
         let current = file.as_ref().and_then(|f| index_of(&entries, f)).unwrap_or(0);
+        let index = build_index(&entries);
+        let sizes = build_sizes(&entries);
 
-        Ok(Self { last_modified: modified_of(&dir), dir, entries, current })
+        Ok(Self { last_modified: modified_of(&dir), dir, entries, index, sizes, current })
     }
 
     pub fn dir(&self) -> &Path {
@@ -124,8 +161,19 @@ impl Directory {
         self.current()
     }
 
+    pub fn size_at(&self, index: usize) -> Option<u64> {
+        self.sizes.get(index).copied().flatten()
+    }
+
+    pub fn index_of_path(&self, path: &Path) -> Option<usize> {
+        match self.index.get(path) {
+            Some(index) => Some(*index),
+            None => index_of(&self.entries, path),
+        }
+    }
+
     pub fn jump_to(&mut self, path: &Path) -> bool {
-        match index_of(&self.entries, path) {
+        match self.index_of_path(path) {
             Some(index) => {
                 self.current = index;
                 true
@@ -136,7 +184,21 @@ impl Directory {
 
     pub fn refresh(&mut self) -> io::Result<()> {
         let previous = self.current().map(Path::to_path_buf);
+        let mut known: HashMap<PathBuf, u64> = self
+            .entries
+            .iter()
+            .zip(self.sizes.iter())
+            .filter_map(|(path, size)| size.map(|size| (path.clone(), size)))
+            .collect();
         self.entries = read_entries(&self.dir)?;
+        self.index = build_index(&self.entries);
+        self.sizes = self
+            .entries
+            .iter()
+            .map(|path| {
+                known.remove(path).or_else(|| std::fs::metadata(path).ok().map(|m| m.len()))
+            })
+            .collect();
         self.last_modified = modified_of(&self.dir);
         self.current = previous
             .as_deref()
@@ -182,13 +244,13 @@ fn index_of(entries: &[PathBuf], path: &Path) -> Option<usize> {
 
 pub struct PendingScan {
     target: Option<PathBuf>,
-    receiver: std::sync::mpsc::Receiver<io::Result<Directory>>,
+    receiver: crossbeam_channel::Receiver<io::Result<Directory>>,
 }
 
 impl PendingScan {
     pub fn spawn(path: &Path) -> Self {
         let (_, file) = split_target(path);
-        let (sender, receiver) = std::sync::mpsc::channel();
+        let (sender, receiver) = crossbeam_channel::unbounded();
         let request = path.to_path_buf();
         std::thread::Builder::new()
             .name("reveal-scan".into())
@@ -206,11 +268,15 @@ impl PendingScan {
     pub fn take(&mut self) -> Option<io::Result<Directory>> {
         match self.receiver.try_recv() {
             Ok(result) => Some(result),
-            Err(std::sync::mpsc::TryRecvError::Empty) => None,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            Err(crossbeam_channel::TryRecvError::Empty) => None,
+            Err(crossbeam_channel::TryRecvError::Disconnected) => {
                 Some(Err(io::Error::other("directory scan failed")))
             }
         }
+    }
+
+    pub fn results(&self) -> crossbeam_channel::Receiver<io::Result<Directory>> {
+        self.receiver.clone()
     }
 
     pub fn wait(&mut self) -> io::Result<Directory> {

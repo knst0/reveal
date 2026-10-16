@@ -1,5 +1,8 @@
+use reveal::decode::{DecodeOutput, Decoded, DecodedImage, Orientation};
+use reveal::viewer::{Presentation, ViewState};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use reveal::directory::Navigation;
 use reveal::render::FitMode;
@@ -24,11 +27,36 @@ fn opens_an_image_and_indexes_its_directory() {
     v.open(&dir.join("1.png")).unwrap();
     v.settle();
 
-    assert_eq!(v.current_path().unwrap(), dir.join("1.png"));
-    assert_eq!(v.directory.len(), 3);
-    assert_eq!(v.directory.current_index(), 1);
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("1.png"));
+    assert_eq!(v.session.directory.len(), 3);
+    assert_eq!(v.session.directory.current_index(), 1);
     assert!(v.render_image().is_some());
-    assert!(v.status().is_none());
+    assert!(v.session.status().is_none());
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn reloads_the_shown_file_once_its_change_on_disk_settles() {
+    let dir = fixture("reload", 2);
+    let path = dir.join("0.png");
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&path).unwrap();
+    v.settle();
+    assert_eq!(v.presentation.current_source_size(), (300, 200));
+    assert!(!v.reload_if_source_changed(), "an untouched file is not reloaded");
+
+    let img = image::RgbaImage::from_pixel(120, 80, image::Rgba([1, 2, 3, 255]));
+    image::DynamicImage::ImageRgba8(img).save(&path).unwrap();
+
+    assert!(!v.reload_if_source_changed(), "the first sighting of a change only arms it");
+    assert_eq!(v.presentation.current_source_size(), (300, 200));
+    assert!(v.reload_if_source_changed(), "a stable change triggers a reload");
+    v.settle();
+
+    assert_eq!(v.presentation.current_path().unwrap(), path);
+    assert_eq!(v.presentation.current_source_size(), (120, 80));
+    assert!(!v.reload_if_source_changed(), "the reloaded stamp becomes the baseline");
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -42,11 +70,11 @@ fn navigates_forward_and_wraps() {
 
     v.navigate(Navigation::Next);
     v.settle();
-    assert_eq!(v.current_path().unwrap(), dir.join("0.png"));
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("0.png"));
 
     v.navigate(Navigation::Prev);
     v.settle();
-    assert_eq!(v.current_path().unwrap(), dir.join("2.png"));
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("2.png"));
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -59,10 +87,10 @@ fn fit_modes_change_the_zoom() {
     v.settle();
 
     v.set_fit(FitMode::Original);
-    assert_eq!(v.transform.zoom, 1.0);
+    assert_eq!(v.view.transform.zoom, 1.0);
 
     v.set_fit(FitMode::Fit);
-    assert!(v.transform.zoom > 1.0, "300x200 should scale up to fill 900x600");
+    assert!(v.view.transform.zoom > 1.0, "300x200 should scale up to fill 900x600");
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -77,7 +105,7 @@ fn a_broken_image_reports_status_instead_of_crashing() {
     v.open(&bad).unwrap();
     v.settle();
 
-    assert!(v.status().is_some(), "should surface an error");
+    assert!(v.session.status().is_some(), "should surface an error");
     assert!(v.render_image().is_none());
     fs::remove_dir_all(&dir).unwrap();
 }
@@ -90,15 +118,40 @@ fn antialias_toggle_persists_across_navigation() {
     v.set_antialias(false);
     v.open(&dir.join("0.png")).unwrap();
     v.settle();
-    assert!(!v.antialias());
+    assert!(!v.view.antialias());
 
     v.navigate(Navigation::Next);
-    assert!(!v.antialias(), "navigation keeps the chosen resample mode");
+    assert!(!v.view.antialias(), "navigation keeps the chosen resample mode");
 
     v.toggle_antialias();
-    assert!(v.antialias());
+    assert!(v.view.antialias());
     v.navigate(Navigation::Next);
-    assert!(v.antialias());
+    assert!(v.view.antialias());
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn nearest_zoom_builds_its_full_res_base_lazily() {
+    let dir = large_fixture("lazybase", 1600, 1200);
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.set_antialias(false);
+    v.open(&dir.join("big.png")).unwrap();
+    v.settle();
+    assert!(v.render_image().is_some());
+    assert!(v.presentation.render_crop().is_none(), "fit zoom must not magnify");
+
+    let intrinsic = v.presentation.current_intrinsic();
+    v.view.zoom_at(8.0, (400.0, 300.0), intrinsic);
+    assert!(v.render_image().is_some());
+    assert!(
+        v.presentation.render_crop().is_some(),
+        "zooming in with Nearest must magnify from the lazily built base"
+    );
+
+    v.view.zoom_at(0.125, (400.0, 300.0), intrinsic);
+    let _ = v.render_image();
+    assert!(v.presentation.render_crop().is_none(), "zooming out must drop the magnification");
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -110,9 +163,11 @@ fn panning_switches_to_free_mode() {
     v.open(&dir.join("0.png")).unwrap();
     v.settle();
 
-    v.pan((25.0, -10.0));
-    assert_eq!(v.transform.fit, FitMode::Free);
-    assert_eq!(v.transform.offset, (25.0, -10.0));
+    let intrinsic = v.presentation.current_intrinsic();
+    v.view.zoom_at(4.0, (400.0, 300.0), intrinsic);
+    v.view.pan((25.0, -10.0));
+    assert_eq!(v.view.transform.fit, FitMode::Free);
+    assert_eq!(v.view.transform.offset, (25.0, -10.0));
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -136,7 +191,7 @@ fn navigation_does_not_block_on_decode() {
     );
 
     v.settle();
-    assert_eq!(v.current_path().unwrap(), dir.join("5.png"));
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("5.png"));
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -157,8 +212,8 @@ fn the_reported_size_is_the_original_not_the_downscaled_copy() {
     v.open(&dir.join("big.png")).unwrap();
     v.settle();
 
-    assert_eq!(v.current_source_size(), (1920, 1080));
-    let (iw, ih) = v.current_intrinsic();
+    assert_eq!(v.presentation.current_source_size(), (1920, 1080));
+    let (iw, ih) = v.presentation.current_intrinsic();
     assert!(iw < 1920.0 && ih < 1080.0, "a downscaled copy should back the render");
 
     fs::remove_dir_all(&dir).unwrap();
@@ -173,8 +228,8 @@ fn original_shows_true_pixels_even_when_a_downscaled_copy_is_rendered() {
     v.settle();
 
     v.set_fit(FitMode::Original);
-    let (iw, _) = v.current_intrinsic();
-    let displayed = iw * v.transform.zoom;
+    let (iw, _) = v.presentation.current_intrinsic();
+    let displayed = iw * v.view.transform.zoom;
     assert!(
         (displayed - 1920.0).abs() < 2.0,
         "Original should display {} source pixels, got {displayed}",
@@ -192,9 +247,67 @@ fn opening_a_directory_shows_its_first_file() {
     v.open(&dir).unwrap();
     v.settle();
 
-    assert_eq!(v.current_path().unwrap(), dir.join("0.png"));
-    assert_eq!(v.directory.len(), 3);
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("0.png"));
+    assert_eq!(v.session.directory.len(), 3);
     assert!(v.render_image().is_some());
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn deferred_reprepare_coalesces_viewport_changes() {
+    let dir = large_fixture("coalesce", 1920, 1080);
+    let mut v = Viewer::new();
+    v.set_viewport(640.0, 400.0);
+    v.open(&dir.join("big.png")).unwrap();
+    v.settle();
+    let initial = v.presentation.current_intrinsic();
+
+    v.set_viewport(500.0, 300.0);
+    v.set_viewport(700.0, 500.0);
+    v.set_viewport(900.0, 600.0);
+    assert_eq!(
+        v.presentation.current_intrinsic(),
+        initial,
+        "viewport changes must not reprepare until the deferred call"
+    );
+
+    assert!(v.reprepare_if_pending());
+    assert!(v.presentation.current_intrinsic().0 > initial.0, "the final viewport is larger");
+
+    let mut reference = Viewer::new();
+    reference.set_viewport(900.0, 600.0);
+    reference.open(&dir.join("big.png")).unwrap();
+    reference.settle();
+    assert_eq!(
+        v.presentation.current_intrinsic(),
+        reference.presentation.current_intrinsic(),
+        "coalesced reprepare must land on the final viewport"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn deferred_reprepare_preserves_free_zoom_ratio() {
+    let dir = large_fixture("freezoom", 1920, 1080);
+    let mut v = Viewer::new();
+    v.set_viewport(640.0, 400.0);
+    v.open(&dir.join("big.png")).unwrap();
+    v.settle();
+
+    let intrinsic = v.presentation.current_intrinsic();
+    v.view.pan((25.0, -10.0));
+    assert_eq!(v.view.transform.fit, FitMode::Free);
+    v.view.zoom_at(1.5, (320.0, 200.0), intrinsic);
+    let before = v.presentation.current_intrinsic().0 * v.view.transform.zoom;
+
+    v.set_viewport(900.0, 600.0);
+    v.reprepare_if_pending();
+
+    let after = v.presentation.current_intrinsic().0 * v.view.transform.zoom;
+    assert!(
+        (before - after).abs() < 1.0,
+        "free zoom must survive a deferred reprepare, {before} vs {after}"
+    );
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -215,8 +328,118 @@ fn open_returns_before_the_scan_and_the_first_decode() {
     assert!(v.needs_ticking(), "the viewer must keep ticking while startup is in flight");
 
     v.settle();
-    assert_eq!(v.current_path().unwrap(), dir.join("7.png"));
-    assert_eq!(v.directory.len(), 400);
-    assert_eq!(v.directory.path_at(v.directory.current_index()).unwrap(), dir.join("7.png"));
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("7.png"));
+    assert_eq!(v.session.directory.len(), 400);
+    assert_eq!(
+        v.session.directory.path_at(v.session.directory.current_index()).unwrap(),
+        dir.join("7.png")
+    );
     fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn open_then_navigate_lands_on_the_expected_path() {
+    let dir = fixture("safety-nav", 4);
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&dir.join("0.png")).unwrap();
+    v.settle();
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("0.png"));
+
+    v.navigate(Navigation::Next);
+    v.settle();
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("1.png"));
+
+    v.navigate(Navigation::Next);
+    v.settle();
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("2.png"));
+
+    v.navigate(Navigation::Prev);
+    v.settle();
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("1.png"));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn set_antialias_preserves_zoom_and_pan() {
+    let dir = fixture("safety-aa", 1);
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&dir.join("0.png")).unwrap();
+    v.settle();
+
+    let intrinsic = v.presentation.current_intrinsic();
+    v.view.pan((25.0, -10.0));
+    v.view.zoom_at(1.5, (400.0, 300.0), intrinsic);
+    let before = v.view.transform;
+
+    v.set_antialias(false);
+
+    assert_eq!(v.view.transform.fit, before.fit);
+    assert!((v.view.transform.zoom - before.zoom).abs() < 1e-3, "zoom must survive the toggle");
+    assert!((v.view.transform.offset.0 - before.offset.0).abs() < 1e-3, "pan x must survive");
+    assert!((v.view.transform.offset.1 - before.offset.1).abs() < 1e-3, "pan y must survive");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_failed_decode_surfaces_a_status_and_clears_current() {
+    let dir = fixture("safety-fail", 1);
+    let bad = dir.join("broken.png");
+    fs::write(&bad, b"definitely not a png").unwrap();
+
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&bad).unwrap();
+    v.settle();
+
+    assert!(v.session.status().is_some(), "a decode failure must surface via status()");
+    assert!(v.presentation.current_path().is_none(), "a decode failure must clear current");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_late_scan_realigns_to_the_canonical_path() {
+    let dir = fixture("safety-realign", 3);
+    let indirect = dir.join(".").join("1.png");
+
+    let mut v = Viewer::new();
+    v.set_viewport(800.0, 600.0);
+    v.open(&indirect).unwrap();
+    v.settle();
+
+    assert_eq!(v.presentation.current_path().unwrap(), dir.join("1.png"));
+    assert_eq!(v.session.directory.len(), 3);
+    assert_eq!(v.session.directory.current_index(), 1);
+    assert!(v.render_image().is_some());
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn presentation_renders_an_in_memory_image_without_any_io() {
+    let output = Arc::new(DecodeOutput {
+        decoded: Decoded::Still(DecodedImage {
+            rgba: vec![200u8; (64 * 32 * 4) as usize],
+            width: 64,
+            height: 32,
+        }),
+        orientation: Orientation::Normal,
+        display: None,
+    });
+
+    let view = ViewState { viewport: (640.0, 480.0), scale_factor: 1.0, ..ViewState::default() };
+    let mut presentation = Presentation::new();
+
+    let path = PathBuf::from("in-memory.png");
+    assert!(presentation.present(&path, Some(output), &view));
+
+    assert_eq!(presentation.current_path().unwrap(), path);
+    assert_eq!(presentation.current_source_size(), (64, 32));
+    assert_eq!(presentation.current_intrinsic(), (64.0, 32.0));
+    assert!(!presentation.is_animated());
+
+    let render = presentation.render_image(&view).expect("a still must produce a render image");
+    assert_eq!(render.size(0).width.0, 64);
+    assert_eq!(render.size(0).height.0, 32);
+    assert!(presentation.render_crop().is_none());
 }

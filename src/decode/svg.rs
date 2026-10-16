@@ -4,7 +4,7 @@ use std::sync::{Arc, OnceLock};
 use resvg::tiny_skia;
 use usvg::Transform;
 
-use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, extension_of};
+use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, has_extension};
 
 pub struct SvgDecoder;
 
@@ -167,7 +167,7 @@ pub fn warm_font_database() {
 pub const SVG_EXTENSIONS: &[&str] = &["svg", "svgz"];
 
 pub fn is_svg_extension(ext: &str) -> bool {
-    matches!(ext, "svg" | "svgz")
+    SVG_EXTENSIONS.iter().any(|want| ext.eq_ignore_ascii_case(want))
 }
 
 fn looks_like_svg(bytes: &[u8]) -> bool {
@@ -189,7 +189,7 @@ impl Decoder for SvgDecoder {
         if looks_like_svg(req.bytes) || is_gzip(req.bytes) {
             return true;
         }
-        extension_of(req.path).is_some_and(|e| is_svg_extension(&e))
+        has_extension(req.path, SVG_EXTENSIONS)
     }
 
     fn decode(&self, req: &DecodeRequest<'_>) -> Result<Decoded, DecodeError> {

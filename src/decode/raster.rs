@@ -5,7 +5,7 @@ use image::AnimationDecoder;
 use image::ImageFormat;
 use image::ImageReader;
 
-use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame, extension_of};
+use super::{DecodeError, DecodeRequest, Decoded, DecodedImage, Decoder, Frame};
 
 pub struct RasterDecoder;
 
@@ -23,11 +23,11 @@ fn sniff(bytes: &[u8]) -> Option<ImageFormat> {
 }
 
 fn format_for(req: &DecodeRequest<'_>) -> Option<ImageFormat> {
-    sniff(req.bytes).or_else(|| extension_of(req.path).and_then(ImageFormat::from_extension))
+    sniff(req.bytes).or_else(|| ImageFormat::from_path(req.path).ok())
 }
 
 fn to_decoded_image(img: image::DynamicImage) -> DecodedImage {
-    let rgba = img.to_rgba8();
+    let rgba = img.into_rgba8();
     DecodedImage { width: rgba.width(), height: rgba.height(), rgba: rgba.into_raw() }
 }
 

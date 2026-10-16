@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -6,6 +7,7 @@ use std::thread::JoinHandle;
 
 use super::{LoadRequest, RequestId, measure};
 use crate::decode::{self, DecodeError, DecodeRequest};
+use crate::directory::FileStamp;
 
 #[derive(Debug)]
 pub struct LoadResult {
@@ -108,6 +110,7 @@ impl Loader {
     pub fn cancel_all_except(&self, keep: &[RequestId]) {
         let (lock, _) = &*self.shared;
         let mut queue = lock.lock().unwrap();
+        let keep: HashSet<RequestId> = keep.iter().copied().collect();
         let dropped: Vec<RequestId> =
             queue.pending.iter().filter(|r| !keep.contains(&r.id)).map(|r| r.id).collect();
         queue.pending.retain(|r| keep.contains(&r.id));
@@ -197,7 +200,10 @@ fn take_next(queue: &mut Queue, current: usize) -> Option<LoadRequest> {
 }
 
 fn load(request: &LoadRequest) -> Result<super::CachedImage, DecodeError> {
-    let bytes = std::fs::read(&request.path)?;
+    let mut file = std::fs::File::open(&request.path)?;
+    let stamp = file.metadata().ok().map(|meta| FileStamp::from_metadata(&meta));
+    let mut bytes = Vec::with_capacity(stamp.map_or(0, |s| s.len as usize));
+    file.read_to_end(&mut bytes)?;
     let output = crate::panic_report::suppress_during(|| {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             decode::decode(&DecodeRequest {
@@ -214,5 +220,6 @@ fn load(request: &LoadRequest) -> Result<super::CachedImage, DecodeError> {
         path: request.path.clone(),
         bytes: measure(&output),
         output: Arc::new(output),
+        stamp,
     })
 }
