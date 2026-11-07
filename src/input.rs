@@ -60,6 +60,11 @@ actions! {
     ToggleAntialias => "toggle_antialias",
     ToggleTheme => "toggle_theme",
     Settings => "settings",
+    CompareTiles => "compare_tiles",
+    CompareSlider => "compare_slider",
+    CompareFlip => "compare_flip",
+    CompareAlign => "compare_align",
+    CompareAlignPixels => "compare_align_pixels",
     Escape => "escape",
 }
 
@@ -228,6 +233,11 @@ pub const DEFAULT_BINDINGS: &[(Action, &[&str])] = &[
     (Action::ToggleAntialias, &["s"]),
     (Action::ToggleTheme, &["t"]),
     (Action::Settings, &["h", "f1"]),
+    (Action::CompareTiles, &["b"]),
+    (Action::CompareSlider, &["v"]),
+    (Action::CompareFlip, &["x"]),
+    (Action::CompareAlign, &["g"]),
+    (Action::CompareAlignPixels, &["shift+g"]),
     (Action::Escape, &["escape"]),
 ];
 

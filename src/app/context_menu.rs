@@ -15,9 +15,11 @@ impl RevealApp {
         p: Palette,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let has_image = self.viewer.presentation.current_path().is_some();
-        let animated = self.viewer.presentation.is_animated();
-        let playing = self.viewer.playback.state == PlaybackState::Playing;
+        let viewer = self.active_viewer();
+        let has_image = viewer.presentation.current_path().is_some();
+        let animated = viewer.presentation.is_animated();
+        let playing = viewer.playback.state == PlaybackState::Playing;
+        let comparing = self.layout().is_some();
 
         let item = |id: &'static str, label: &'static str, action: Action| {
             MenuItem::new(id, label)
@@ -67,6 +69,34 @@ impl RevealApp {
                 }))
                 .child(ui::menu_separator(p))
                 .child(item("cm-copy", "Copy Image", Action::ImgCopy))
+                .child(item_always(
+                    "cm-compare-tiles",
+                    "Compare Side by Side",
+                    Action::CompareTiles,
+                ))
+                .child(item_always(
+                    "cm-compare-slider",
+                    "Compare with Slider",
+                    Action::CompareSlider,
+                ))
+                .children(comparing.then(|| {
+                    item_always("cm-compare-flip", "Flip Compare Orientation", Action::CompareFlip)
+                }))
+                .children(comparing.then(|| {
+                    item_always(
+                        "cm-compare-align",
+                        "Align Other to This (Frame)",
+                        Action::CompareAlign,
+                    )
+                }))
+                .children(comparing.then(|| {
+                    item_always(
+                        "cm-compare-align-px",
+                        "Align Other to This (Pixels)",
+                        Action::CompareAlignPixels,
+                    )
+                }))
+                .child(ui::menu_separator(p))
                 .child(
                     MenuItem::new("cm-reveal", "Reveal in Folder")
                         .disabled(!has_image)

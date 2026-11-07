@@ -2,6 +2,7 @@ pub mod about;
 pub mod actions;
 pub mod associations;
 pub mod cache;
+pub mod compare;
 pub mod config;
 pub mod decode;
 pub mod dialog;
