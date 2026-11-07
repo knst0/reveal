@@ -141,15 +141,14 @@ fn nearest_zoom_builds_its_full_res_base_lazily() {
     assert!(v.render_image().is_some());
     assert!(v.presentation.render_crop().is_none(), "fit zoom must not magnify");
 
-    let intrinsic = v.presentation.current_intrinsic();
-    v.view.zoom_at(8.0, (400.0, 300.0), intrinsic);
+    v.view.zoom_at(8.0, (400.0, 300.0));
     assert!(v.render_image().is_some());
     assert!(
         v.presentation.render_crop().is_some(),
         "zooming in with Nearest must magnify from the lazily built base"
     );
 
-    v.view.zoom_at(0.125, (400.0, 300.0), intrinsic);
+    v.view.zoom_at(0.125, (400.0, 300.0));
     let _ = v.render_image();
     assert!(v.presentation.render_crop().is_none(), "zooming out must drop the magnification");
     fs::remove_dir_all(&dir).unwrap();
@@ -163,8 +162,7 @@ fn panning_switches_to_free_mode() {
     v.open(&dir.join("0.png")).unwrap();
     v.settle();
 
-    let intrinsic = v.presentation.current_intrinsic();
-    v.view.zoom_at(4.0, (400.0, 300.0), intrinsic);
+    v.view.zoom_at(4.0, (400.0, 300.0));
     v.view.pan((25.0, -10.0));
     assert_eq!(v.view.transform.fit, FitMode::Free);
     assert_eq!(v.view.transform.offset, (25.0, -10.0));
@@ -294,10 +292,9 @@ fn deferred_reprepare_preserves_free_zoom_ratio() {
     v.open(&dir.join("big.png")).unwrap();
     v.settle();
 
-    let intrinsic = v.presentation.current_intrinsic();
     v.view.pan((25.0, -10.0));
     assert_eq!(v.view.transform.fit, FitMode::Free);
-    v.view.zoom_at(1.5, (320.0, 200.0), intrinsic);
+    v.view.zoom_at(1.5, (320.0, 200.0));
     let before = v.presentation.current_intrinsic().0 * v.view.transform.zoom;
 
     v.set_viewport(900.0, 600.0);
@@ -368,9 +365,8 @@ fn set_antialias_preserves_zoom_and_pan() {
     v.open(&dir.join("0.png")).unwrap();
     v.settle();
 
-    let intrinsic = v.presentation.current_intrinsic();
     v.view.pan((25.0, -10.0));
-    v.view.zoom_at(1.5, (400.0, 300.0), intrinsic);
+    v.view.zoom_at(1.5, (400.0, 300.0));
     let before = v.view.transform;
 
     v.set_antialias(false);

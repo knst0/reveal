@@ -467,8 +467,7 @@ impl Render for RevealApp {
                     return;
                 }
                 let cursor = this.to_image_area(event.position);
-                let intrinsic = this.viewer.presentation.current_intrinsic();
-                this.viewer.view.zoom_at(1.1f32.powf(delta.clamp(-5.0, 5.0)), cursor, intrinsic);
+                this.viewer.view.zoom_at(1.1f32.powf(delta.clamp(-5.0, 5.0)), cursor);
                 cx.notify();
             }))
             .child(self.render_toolbar(p, window, cx))

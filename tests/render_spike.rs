@@ -303,7 +303,7 @@ fn zoom_at_cursor_keeps_that_point_stationary() {
         ((cursor.0 - x) / w, (cursor.1 - y) / h)
     };
 
-    t.zoom_at(2.0, cursor, image, viewport);
+    t.zoom_at(2.0, cursor, viewport);
 
     let point_after = {
         let (x, y, w, h) = t.image_bounds(image, viewport);
@@ -426,10 +426,19 @@ fn small_image_pans_freely() {
 }
 
 #[test]
-fn zoom_out_releases_the_canvas_back_to_centre() {
+fn zoom_at_an_edge_or_outside_the_image_is_not_pulled_back() {
     let image = (1000.0, 1000.0);
     let viewport = (500.0, 500.0);
-    let mut t = ViewTransform { zoom: 2.0, offset: (250.0, 250.0), fit: FitMode::Free };
-    t.zoom_at(0.05, (250.0, 250.0), image, viewport);
-    assert_eq!(t.offset, (0.0, 0.0), "a shrunk image recentres");
+    // Cursor on empty canvas left of a shrunk image: that canvas point must stay put.
+    let mut t = ViewTransform { zoom: 0.2, offset: (0.0, 0.0), fit: FitMode::Free };
+    let cursor = (10.0, 250.0);
+    let anchor = |t: &ViewTransform| {
+        let (x, y, w, h) = t.image_bounds(image, viewport);
+        ((cursor.0 - x) / w, (cursor.1 - y) / h)
+    };
+    let before = anchor(&t);
+    t.zoom_at(3.0, cursor, viewport);
+    let after = anchor(&t);
+    assert!((before.0 - after.0).abs() < 1e-4 && (before.1 - after.1).abs() < 1e-4);
+    assert_ne!(t.offset, (0.0, 0.0), "zoom must not recentre the image");
 }

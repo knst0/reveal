@@ -131,13 +131,9 @@ impl ViewTransform {
         self.offset.1 += delta.1;
     }
 
-    pub fn zoom_at(
-        &mut self,
-        factor: f32,
-        cursor: (f32, f32),
-        image: (f32, f32),
-        viewport: (f32, f32),
-    ) {
+    /// Anchors the zoom at `cursor` without clamping, so an image edge or the
+    /// empty canvas around it stays under the pointer like any other point.
+    pub fn zoom_at(&mut self, factor: f32, cursor: (f32, f32), viewport: (f32, f32)) {
         let new_zoom = (self.zoom * factor).clamp(0.01, 100.0);
         let actual = new_zoom / self.zoom;
         let center = (viewport.0 / 2.0, viewport.1 / 2.0);
@@ -147,6 +143,5 @@ impl ViewTransform {
         self.offset.1 -= from_center.1 * (actual - 1.0);
         self.zoom = new_zoom;
         self.fit = FitMode::Free;
-        self.clamp_offset(image, viewport);
     }
 }

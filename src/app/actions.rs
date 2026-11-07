@@ -32,14 +32,8 @@ impl RevealApp {
             Action::PanDown => self.viewer.view.pan((0.0, -50.0)),
             Action::PanLeft => self.viewer.view.pan((50.0, 0.0)),
             Action::PanRight => self.viewer.view.pan((-50.0, 0.0)),
-            Action::ZoomIn => {
-                let image = self.viewer.presentation.current_intrinsic();
-                self.viewer.view.zoom_at(1.25, centre, image);
-            }
-            Action::ZoomOut => {
-                let image = self.viewer.presentation.current_intrinsic();
-                self.viewer.view.zoom_at(0.8, centre, image);
-            }
+            Action::ZoomIn => self.viewer.view.zoom_at(1.25, centre),
+            Action::ZoomOut => self.viewer.view.zoom_at(0.8, centre),
             Action::PlayAnim => self.viewer.toggle_play(),
             Action::PlayPresent => self.viewer.playback.set_state(PlaybackState::Present),
             Action::PlayPresentRandom => {
