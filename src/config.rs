@@ -246,3 +246,7 @@ impl Cache {
         }
     }
 }
+/// Optional colour override, e.g. rendered from the wallpaper by a Noctalia template.
+pub fn palette_path() -> Option<PathBuf> {
+    project_dir().map(|d| d.join("palette.json"))
+}

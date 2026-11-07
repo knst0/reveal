@@ -24,6 +24,7 @@ fn main() {
     std::thread::spawn(reveal::decode::warm_font_database);
 
     let config = Configuration::load();
+    reveal::ui::sync_palette_file();
     let mut bindings = Bindings::default();
     if let Some(overrides) = config.bindings.as_ref() {
         bindings.apply_overrides(overrides);

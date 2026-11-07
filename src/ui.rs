@@ -55,8 +55,84 @@ pub const LIGHT: Palette = Palette {
     close_hover: 0xc42b1c,
 };
 
+/// Dark and light palettes loaded from `palette.json`, when it exists.
+static EXTERNAL: std::sync::RwLock<Option<(Palette, Palette)>> = std::sync::RwLock::new(None);
+static EXTERNAL_STAMP: std::sync::Mutex<Option<std::time::SystemTime>> =
+    std::sync::Mutex::new(None);
+
 pub fn palette(theme: Theme) -> Palette {
-    if theme.is_dark() { DARK } else { LIGHT }
+    let external = *EXTERNAL.read().unwrap_or_else(|e| e.into_inner());
+    match (external, theme.is_dark()) {
+        (Some((dark, _)), true) => dark,
+        (Some((_, light)), false) => light,
+        (None, true) => DARK,
+        (None, false) => LIGHT,
+    }
+}
+
+fn hex(value: &serde_json::Value) -> Option<u32> {
+    let digits = value.as_str()?.trim().trim_start_matches('#');
+    if digits.len() != 6 {
+        return None;
+    }
+    u32::from_str_radix(digits, 16).ok()
+}
+
+macro_rules! overlay {
+    ($base:expr, $table:expr, $($field:ident),* $(,)?) => {
+        Palette { $($field: $table.get(stringify!($field)).and_then(hex).unwrap_or($base.$field)),* }
+    };
+}
+
+/// Parses `{"dark": {field: "#rrggbb", ..}, "light": {..}}`; a missing or
+/// malformed field keeps the built-in colour.
+pub fn parse_palettes(text: &str) -> Option<(Palette, Palette)> {
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let side = |name: &str, base: Palette| {
+        let table = value.get(name)?;
+        Some(overlay!(
+            base,
+            table,
+            background,
+            bar,
+            surface,
+            elevated,
+            border,
+            border_variant,
+            text,
+            text_muted,
+            text_accent,
+            element_hover,
+            element_active,
+            danger,
+            close_hover,
+        ))
+    };
+    Some((side("dark", DARK)?, side("light", LIGHT)?))
+}
+
+/// Reloads `palette.json` when its modification time changed.
+/// Returns true when the active palettes changed.
+pub fn sync_palette_file() -> bool {
+    let path = crate::config::palette_path();
+    let stamp = path.as_deref().and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
+    let mut seen = EXTERNAL_STAMP.lock().unwrap_or_else(|e| e.into_inner());
+    if *seen == stamp {
+        return false;
+    }
+    *seen = stamp;
+    let loaded = match (stamp, path) {
+        (Some(_), Some(path)) => {
+            let parsed = std::fs::read_to_string(&path).ok().and_then(|t| parse_palettes(&t));
+            if parsed.is_none() {
+                log::warn!("{}: not a valid palette; using built-in colours", path.display());
+            }
+            parsed
+        }
+        _ => None,
+    };
+    *EXTERNAL.write().unwrap_or_else(|e| e.into_inner()) = loaded;
+    true
 }
 
 pub const BASE_REM: f32 = 16.0;
@@ -321,4 +397,22 @@ pub fn static_chip(p: Palette, active: bool) -> Div {
         .text_size(rem(12.))
         .bg(color(if active { p.element_active } else { p.surface }))
         .text_color(color(if active { p.text_accent } else { p.text }))
+}
+
+#[cfg(test)]
+mod palette_tests {
+    use super::*;
+
+    #[test]
+    fn palette_file_overrides_listed_fields_only() {
+        let text = r##"{"dark": {"background": "#101010", "text_accent": "abcdef"},
+                        "light": {"text": "#000001", "bar": "bogus"}}"##;
+        let (dark, light) = parse_palettes(text).unwrap();
+        assert_eq!(dark.background, 0x101010);
+        assert_eq!(dark.text_accent, 0xabcdef);
+        assert_eq!(dark.border, DARK.border);
+        assert_eq!(light.text, 0x000001);
+        assert_eq!(light.bar, LIGHT.bar, "malformed colour keeps the built-in one");
+        assert!(parse_palettes(r#"{"dark": {}}"#).is_none(), "both variants are required");
+    }
 }

@@ -275,6 +275,9 @@ impl RevealApp {
                 }
             }
             Wake::Poll => {
+                if reveal::ui::sync_palette_file() {
+                    cx.notify();
+                }
                 let requested = reveal::drop::take_requested();
                 if !requested.is_empty() {
                     self.open_dropped(&requested);
