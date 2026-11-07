@@ -54,6 +54,8 @@ pub struct RevealApp {
     compare: Option<compare::Compare>,
     /// Size of the area below the toolbar that holds the panes.
     image_area: (f32, f32),
+    /// Resolved `config.window.toolbar`; the session check reads the environment.
+    toolbar_visible: bool,
     pub window_title: String,
     pub focus: gpui::FocusHandle,
     pub viewer: Viewer,
@@ -93,6 +95,7 @@ impl RevealApp {
             drag_pane: 0,
             compare: None,
             image_area: (0.0, 0.0),
+            toolbar_visible: config.window.toolbar.visible(),
             bindings,
             settings_window: None,
             settings_release: None,
@@ -200,6 +203,7 @@ impl RevealApp {
         }
         self.update_settings = config.updates.clone();
         self.bindings = bindings;
+        self.toolbar_visible = config.window.toolbar.visible();
         self.config = config;
     }
 
@@ -414,7 +418,7 @@ impl Render for RevealApp {
         let scale = self.config.window.ui_scale.factor();
         window.set_rem_size(px(ui::BASE_REM * scale));
 
-        let chrome = (ui::TOOLBAR_HEIGHT + ui::STATUS_BAR_HEIGHT) * scale;
+        let chrome = (self.toolbar_height() + ui::STATUS_BAR_HEIGHT) * scale;
         self.image_area = (f32::from(size.width), (f32::from(size.height) - chrome).max(1.0));
         // Without compare this is one full-area rect.
         let rects = self.pane_rects();
@@ -545,7 +549,7 @@ impl Render for RevealApp {
                 }
                 cx.notify();
             }))
-            .child(self.render_toolbar(p, window, cx))
+            .children(self.toolbar_visible().then(|| self.render_toolbar(p, window, cx)))
             .child(self.render_image_area(p, window, cx))
             .child(self.render_status_bar(p, cx))
             .children(self.context_menu.map(|at| self.render_context_menu(at, p, cx)))
@@ -574,8 +578,17 @@ impl RevealApp {
         }
     }
 
+    fn toolbar_visible(&self) -> bool {
+        self.toolbar_visible
+    }
+
+    /// Unscaled height of the top bar, 0 when it is hidden.
+    fn toolbar_height(&self) -> f32 {
+        if self.toolbar_visible { ui::TOOLBAR_HEIGHT } else { 0.0 }
+    }
+
     fn to_image_area(&self, position: gpui::Point<gpui::Pixels>) -> (f32, f32) {
-        let toolbar = ui::TOOLBAR_HEIGHT * self.config.window.ui_scale.factor();
+        let toolbar = self.toolbar_height() * self.config.window.ui_scale.factor();
         (f32::from(position.x), f32::from(position.y) - toolbar)
     }
 
