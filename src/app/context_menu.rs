@@ -1,6 +1,6 @@
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-    div, px,
+    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, anchored,
+    point, px,
 };
 use reveal::input::Action;
 use reveal::playback::PlaybackState;
@@ -40,7 +40,8 @@ impl RevealApp {
                 }),
             )
         };
-        div().absolute().left(px(at.0)).top(px(at.1)).child(
+        // Flips/snaps so the menu never leaves the window near an edge.
+        anchored().position(point(px(at.0), px(at.1))).snap_to_window_with_margin(px(4.)).child(
             ui::menu_surface(p)
                 .occlude()
                 .child(item_always("cm-open-file", "Open Image\u{2026}", Action::FileOpen))
@@ -68,7 +69,6 @@ impl RevealApp {
                     }))
                 }))
                 .child(ui::menu_separator(p))
-                .child(item("cm-copy", "Copy Image", Action::ImgCopy))
                 .child(item_always(
                     "cm-compare-tiles",
                     "Compare Side by Side",
@@ -97,6 +97,7 @@ impl RevealApp {
                     )
                 }))
                 .child(ui::menu_separator(p))
+                .child(item("cm-copy", "Copy Image", Action::ImgCopy))
                 .child(
                     MenuItem::new("cm-reveal", "Reveal in Folder")
                         .disabled(!has_image)
