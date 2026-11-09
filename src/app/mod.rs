@@ -217,16 +217,14 @@ impl RevealApp {
 
         {
             let tx = tx.clone();
-            cx.background_executor()
-                .spawn_dedicated(move |_| async move {
-                    loop {
-                        std::thread::sleep(Duration::from_millis(250));
-                        if tx.unbounded_send(Wake::Poll).is_err() {
-                            break;
-                        }
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(Duration::from_millis(250));
+                    if tx.unbounded_send(Wake::Poll).is_err() {
+                        break;
                     }
-                })
-                .detach();
+                }
+            });
         }
 
         self.forward_loader(0, cx);
@@ -325,20 +323,18 @@ impl RevealApp {
     }
 
     /// Forwards a pane's decode results into the wake channel.
-    fn forward_loader(&self, pane: usize, cx: &mut Context<Self>) {
+    fn forward_loader(&self, pane: usize, _cx: &mut Context<Self>) {
         let Some(tx) = self.wake.clone() else {
             return;
         };
         let loader = self.pane(pane).session.cache.loader_handle();
-        cx.background_executor()
-            .spawn_dedicated(move |_| async move {
-                while let Some(result) = loader.recv() {
-                    if tx.unbounded_send(Wake::Cache(pane, result)).is_err() {
-                        break;
-                    }
+        std::thread::spawn(move || {
+            while let Some(result) = loader.recv() {
+                if tx.unbounded_send(Wake::Cache(pane, result)).is_err() {
+                    break;
                 }
-            })
-            .detach();
+            }
+        });
     }
 
     fn wake(&self) {
@@ -372,22 +368,20 @@ impl RevealApp {
         .detach();
     }
 
-    fn start_scan_forwarder(&mut self, pane: usize, cx: &mut Context<Self>) {
+    fn start_scan_forwarder(&mut self, pane: usize, _cx: &mut Context<Self>) {
         let Some((receiver, generation)) = self.pane(pane).session.scan_receiver() else {
             return;
         };
         let Some(tx) = self.wake.clone() else {
             return;
         };
-        cx.background_executor()
-            .spawn_dedicated(move |_| async move {
-                while let Ok(result) = receiver.recv() {
-                    if tx.unbounded_send(Wake::Scan(pane, generation, result)).is_err() {
-                        break;
-                    }
+        std::thread::spawn(move || {
+            while let Ok(result) = receiver.recv() {
+                if tx.unbounded_send(Wake::Scan(pane, generation, result)).is_err() {
+                    break;
                 }
-            })
-            .detach();
+            }
+        });
     }
 
     fn sync_scan_forwarder(&mut self, cx: &mut Context<Self>) {
@@ -530,7 +524,7 @@ impl Render for RevealApp {
                 this.drag_from = Some(now);
                 cx.notify();
             }))
-            .on_scroll_wheel(cx.listener(|this, event: &gpui::ScrollWheelEvent, _window, cx| {
+            .on_scroll(cx.listener(|this, event: &gpui::ScrollEvent, _window, cx| {
                 let delta = match event.delta {
                     gpui::ScrollDelta::Pixels(p) => f32::from(p.y) / 50.0,
                     gpui::ScrollDelta::Lines(l) => l.y,
