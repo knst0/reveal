@@ -22,15 +22,3 @@ updates:
           - '*'
     commit-message:
       prefix: 'ci'
-
-  - package-ecosystem: cargo
-    directory: /
-    schedule:
-      interval: weekly
-    groups:
-      cargo:
-        update-types:
-          - minor
-          - patch
-    commit-message:
-      prefix: 'deps'
