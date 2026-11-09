@@ -1,4 +1,4 @@
-use crate::config::{Channel, Configuration, UiScale};
+use crate::config::{Channel, Configuration, Toolbar, UiScale};
 use crate::input::{Action, Binding, Bindings, Modifiers};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,6 +149,13 @@ impl SettingsState {
     pub fn set_ui_scale(&mut self, scale: UiScale) {
         if self.config.window.ui_scale != scale {
             self.config.window.ui_scale = scale;
+            self.dirty = true;
+        }
+    }
+
+    pub fn set_toolbar(&mut self, toolbar: Toolbar) {
+        if self.config.window.toolbar != toolbar {
+            self.config.window.toolbar = toolbar;
             self.dirty = true;
         }
     }

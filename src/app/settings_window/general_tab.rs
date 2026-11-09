@@ -2,7 +2,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::{
     AppContext, Context, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, px,
 };
-use reveal::config::{Channel, UI_SCALES};
+use reveal::config::{Channel, TOOLBARS, UI_SCALES};
 use reveal::settings::{APPEARANCE_FIELDS, ToggleField, UPDATE_FIELDS};
 use reveal::ui::{self, Palette};
 
@@ -44,6 +44,28 @@ impl SettingsWindow {
                             .child(scale.label())
                             .on_click(cx.listener(move |this, _e, _w, cx| {
                                 this.state.set_ui_scale(scale);
+                                this.preview(cx);
+                            }))
+                    })),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div().flex_grow(1.).flex().flex_col().child(div().child("Top bar")).child(
+                            div()
+                                .text_color(ui::color(p.text_muted))
+                                .child("Auto hides it under tiling window managers."),
+                        ),
+                    )
+                    .children(TOOLBARS.iter().map(|toolbar| {
+                        let toolbar = *toolbar;
+                        ui::chip(("toolbar", toolbar as usize), p, toolbar == config.window.toolbar)
+                            .child(toolbar.label())
+                            .on_click(cx.listener(move |this, _e, _w, cx| {
+                                this.state.set_toolbar(toolbar);
                                 this.preview(cx);
                             }))
                     })),

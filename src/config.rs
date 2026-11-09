@@ -25,12 +25,87 @@ pub struct ConfigWindow {
     pub antialias: bool,
     pub start_fullscreen: bool,
     pub ui_scale: UiScale,
+    pub toolbar: Toolbar,
 }
 
 impl Default for ConfigWindow {
     fn default() -> Self {
-        Self { dark: true, antialias: false, start_fullscreen: false, ui_scale: UiScale::default() }
+        Self {
+            dark: true,
+            antialias: false,
+            start_fullscreen: false,
+            ui_scale: UiScale::default(),
+            toolbar: Toolbar::default(),
+        }
     }
+}
+
+/// Top bar with navigation and window buttons.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Toolbar {
+    /// Shown, except under a tiling compositor that manages windows itself.
+    #[default]
+    Auto,
+    Show,
+    Hide,
+}
+
+pub const TOOLBARS: &[Toolbar] = &[Toolbar::Auto, Toolbar::Show, Toolbar::Hide];
+
+impl Toolbar {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::Show => "Show",
+            Self::Hide => "Hide",
+        }
+    }
+
+    pub fn visible(self) -> bool {
+        match self {
+            Self::Auto => !tiling_session(),
+            Self::Show => true,
+            Self::Hide => false,
+        }
+    }
+}
+
+/// True under a tiling Wayland/X11 window manager (niri, sway, Hyprland, i3, ...).
+/// Always false on Windows and macOS.
+pub fn tiling_session() -> bool {
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
+        return false;
+    }
+    let sockets = ["NIRI_SOCKET", "SWAYSOCK", "HYPRLAND_INSTANCE_SIGNATURE", "I3SOCK"];
+    if sockets.iter().any(|var| std::env::var_os(var).is_some()) {
+        return true;
+    }
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    is_tiling_desktop(&desktop)
+}
+
+pub fn is_tiling_desktop(desktop: &str) -> bool {
+    const TILING: &[&str] = &[
+        "niri",
+        "sway",
+        "hyprland",
+        "i3",
+        "river",
+        "mango",
+        "dwl",
+        "scroll",
+        "bspwm",
+        "qtile",
+        "awesome",
+        "dwm",
+        "xmonad",
+        "herbstluftwm",
+        "leftwm",
+        "wayfire",
+        "labwc",
+    ];
+    desktop.split(':').any(|name| TILING.contains(&name.trim().to_ascii_lowercase().as_str()))
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -178,6 +253,11 @@ pub fn config_path() -> Option<PathBuf> {
     project_dir().map(|d| d.join(CONFIG_FILE))
 }
 
+/// Optional colour override, e.g. rendered from the wallpaper by a Noctalia template.
+pub fn palette_path() -> Option<PathBuf> {
+    project_dir().map(|d| d.join("palette.json"))
+}
+
 pub fn cache_path() -> Option<PathBuf> {
     project_dir().map(|d| d.join(CACHE_FILE))
 }
@@ -244,5 +324,21 @@ impl Cache {
             Some(p) => self.save_to(&p),
             None => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod toolbar_tests {
+    use super::*;
+
+    #[test]
+    fn tiling_desktops_are_recognised() {
+        assert!(is_tiling_desktop("niri"));
+        assert!(is_tiling_desktop("sway:wlroots"));
+        assert!(is_tiling_desktop("Hyprland"));
+        assert!(!is_tiling_desktop("GNOME"));
+        assert!(!is_tiling_desktop("KDE"));
+        assert!(!is_tiling_desktop(""));
+        assert!(Toolbar::Show.visible() && !Toolbar::Hide.visible());
     }
 }

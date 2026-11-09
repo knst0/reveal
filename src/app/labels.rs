@@ -75,6 +75,11 @@ pub fn action_label(action: Action) -> &'static str {
         Action::ToggleFullscreen => "Toggle Fullscreen",
         Action::ToggleAntialias => "Toggle Smoothing",
         Action::ToggleTheme => "Toggle Theme",
+        Action::CompareTiles => "Compare Side by Side",
+        Action::CompareSlider => "Compare with Slider",
+        Action::CompareFlip => "Compare: Flip Orientation",
+        Action::CompareAlign => "Compare: Align Frames",
+        Action::CompareAlignPixels => "Compare: Align Pixels",
         Action::Settings => "Settings",
         Action::Escape => "Cancel / Close",
     }

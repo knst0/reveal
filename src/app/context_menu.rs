@@ -1,6 +1,6 @@
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-    div, px,
+    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, anchored,
+    point, px,
 };
 use reveal::input::Action;
 use reveal::playback::PlaybackState;
@@ -15,9 +15,11 @@ impl RevealApp {
         p: Palette,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let has_image = self.viewer.presentation.current_path().is_some();
-        let animated = self.viewer.presentation.is_animated();
-        let playing = self.viewer.playback.state == PlaybackState::Playing;
+        let viewer = self.active_viewer();
+        let has_image = viewer.presentation.current_path().is_some();
+        let animated = viewer.presentation.is_animated();
+        let playing = viewer.playback.state == PlaybackState::Playing;
+        let comparing = self.layout().is_some();
 
         let item = |id: &'static str, label: &'static str, action: Action| {
             MenuItem::new(id, label)
@@ -38,7 +40,8 @@ impl RevealApp {
                 }),
             )
         };
-        div().absolute().left(px(at.0)).top(px(at.1)).child(
+        // Flips/snaps so the menu never leaves the window near an edge.
+        anchored().position(point(px(at.0), px(at.1))).snap_to_window_with_margin(px(4.)).child(
             ui::menu_surface(p)
                 .occlude()
                 .child(item_always("cm-open-file", "Open Image\u{2026}", Action::FileOpen))
@@ -64,6 +67,34 @@ impl RevealApp {
                         this.context_menu = None;
                         this.run(Action::PlayAnim, window, cx);
                     }))
+                }))
+                .child(ui::menu_separator(p))
+                .child(item_always(
+                    "cm-compare-tiles",
+                    "Compare Side by Side",
+                    Action::CompareTiles,
+                ))
+                .child(item_always(
+                    "cm-compare-slider",
+                    "Compare with Slider",
+                    Action::CompareSlider,
+                ))
+                .children(comparing.then(|| {
+                    item_always("cm-compare-flip", "Flip Compare Orientation", Action::CompareFlip)
+                }))
+                .children(comparing.then(|| {
+                    item_always(
+                        "cm-compare-align",
+                        "Align Other to This (Frame)",
+                        Action::CompareAlign,
+                    )
+                }))
+                .children(comparing.then(|| {
+                    item_always(
+                        "cm-compare-align-px",
+                        "Align Other to This (Pixels)",
+                        Action::CompareAlignPixels,
+                    )
                 }))
                 .child(ui::menu_separator(p))
                 .child(item("cm-copy", "Copy Image", Action::ImgCopy))

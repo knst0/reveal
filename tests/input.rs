@@ -150,7 +150,7 @@ fn exported_overrides_reproduce_the_same_bindings() {
 
 #[test]
 fn all_actions_lists_every_action() {
-    assert_eq!(reveal::input::ALL_ACTIONS.len(), 24);
+    assert_eq!(reveal::input::ALL_ACTIONS.len(), 29);
 }
 
 #[test]
@@ -179,6 +179,11 @@ fn action_names_are_the_on_disk_format() {
         (Action::ToggleAntialias, "toggle_antialias"),
         (Action::ToggleTheme, "toggle_theme"),
         (Action::Settings, "settings"),
+        (Action::CompareTiles, "compare_tiles"),
+        (Action::CompareSlider, "compare_slider"),
+        (Action::CompareFlip, "compare_flip"),
+        (Action::CompareAlign, "compare_align"),
+        (Action::CompareAlignPixels, "compare_align_pixels"),
         (Action::Escape, "escape"),
     ] {
         assert_eq!(action.name(), expected);

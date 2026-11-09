@@ -76,8 +76,8 @@ impl ViewState {
         self.transform.pan(delta);
     }
 
-    pub fn zoom_at(&mut self, factor: f32, cursor: (f32, f32), image: (f32, f32)) {
-        self.transform.zoom_at(factor, cursor, image, self.viewport);
+    pub fn zoom_at(&mut self, factor: f32, cursor: (f32, f32)) {
+        self.transform.zoom_at(factor, cursor, self.viewport);
     }
 
     pub fn clamp_view(&mut self, image: (f32, f32)) {
