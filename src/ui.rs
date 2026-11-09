@@ -4,8 +4,6 @@ use gpui::{
     rems, rgb,
 };
 
-use crate::actions::Theme;
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Palette {
     pub background: u32,
@@ -21,6 +19,22 @@ pub struct Palette {
     pub element_active: u32,
     pub danger: u32,
     pub close_hover: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Theme {
+    Light,
+    Dark,
+}
+
+impl Theme {
+    pub fn from_dark(dark: bool) -> Theme {
+        if dark { Theme::Dark } else { Theme::Light }
+    }
+
+    pub fn is_dark(self) -> bool {
+        self == Theme::Dark
+    }
 }
 
 pub const DARK: Palette = Palette {
@@ -55,13 +69,19 @@ pub const LIGHT: Palette = Palette {
     close_hover: 0xc42b1c,
 };
 
-/// Dark and light palettes loaded from `palette.json`, when it exists.
-static EXTERNAL: std::sync::RwLock<Option<(Palette, Palette)>> = std::sync::RwLock::new(None);
-static EXTERNAL_STAMP: std::sync::Mutex<Option<std::time::SystemTime>> =
-    std::sync::Mutex::new(None);
+#[derive(Default)]
+struct ExternalPalettes {
+    stamp: Option<std::time::SystemTime>,
+    palettes: Option<(Palette, Palette)>,
+}
+
+/// Dark and light palettes loaded from `palette.json`, keyed by the file
+/// stamp that produced them.
+static EXTERNAL: std::sync::RwLock<ExternalPalettes> =
+    std::sync::RwLock::new(ExternalPalettes { stamp: None, palettes: None });
 
 pub fn palette(theme: Theme) -> Palette {
-    let external = *EXTERNAL.read().unwrap_or_else(|e| e.into_inner());
+    let external = EXTERNAL.read().unwrap_or_else(|e| e.into_inner()).palettes;
     match (external, theme.is_dark()) {
         (Some((dark, _)), true) => dark,
         (Some((_, light)), false) => light,
@@ -116,12 +136,12 @@ pub fn parse_palettes(text: &str) -> Option<(Palette, Palette)> {
 pub fn sync_palette_file() -> bool {
     let path = crate::config::palette_path();
     let stamp = path.as_deref().and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
-    let mut seen = EXTERNAL_STAMP.lock().unwrap_or_else(|e| e.into_inner());
-    if *seen == stamp {
+    let mut external = EXTERNAL.write().unwrap_or_else(|e| e.into_inner());
+    if external.stamp == stamp {
         return false;
     }
-    *seen = stamp;
-    let loaded = match (stamp, path) {
+    external.stamp = stamp;
+    external.palettes = match (stamp, path) {
         (Some(_), Some(path)) => {
             let parsed = std::fs::read_to_string(&path).ok().and_then(|t| parse_palettes(&t));
             if parsed.is_none() {
@@ -131,7 +151,6 @@ pub fn sync_palette_file() -> bool {
         }
         _ => None,
     };
-    *EXTERNAL.write().unwrap_or_else(|e| e.into_inner()) = loaded;
     true
 }
 
@@ -182,11 +201,7 @@ pub fn status_bar(p: Palette) -> Div {
         .text_size(rem(13.))
 }
 
-pub fn tool_button(id: &'static str, p: Palette, active: bool) -> gpui::Stateful<Div> {
-    tool_button_dyn(id, p, active)
-}
-
-pub fn tool_button_dyn(
+pub fn tool_button(
     id: impl Into<gpui::ElementId>,
     p: Palette,
     active: bool,
@@ -205,10 +220,6 @@ pub fn tool_button_dyn(
         .when(active, |s| s.bg(color(p.element_active)))
         .hover(|s| s.bg(color(p.element_hover)))
         .active(|s| s.bg(color(p.element_active)))
-}
-
-pub fn separator(p: Palette) -> Div {
-    div().w(rem(1.)).h(rem(18.)).mx_1().bg(color(p.border_variant))
 }
 
 pub fn menu_surface(p: Palette) -> Div {
@@ -302,21 +313,6 @@ pub fn overlay_panel(p: Palette) -> Div {
         .text_color(color(p.text))
 }
 
-pub fn panel_header(p: Palette, title: impl Into<gpui::SharedString>) -> Div {
-    div()
-        .px_4()
-        .h(rem(38.))
-        .flex()
-        .flex_shrink_0()
-        .items_center()
-        .bg(color(p.surface))
-        .border_b_1()
-        .border_color(color(p.border))
-        .text_size(rem(14.))
-        .text_color(color(p.text))
-        .child(title.into())
-}
-
 pub const TOAST_WIDTH: f32 = 340.0;
 
 pub fn toast_container() -> Div {
@@ -340,15 +336,6 @@ pub fn toast_actions() -> Div {
 }
 
 pub fn toast_button(
-    id: &'static str,
-    p: Palette,
-    label: impl Into<gpui::SharedString>,
-    primary: bool,
-) -> gpui::Stateful<Div> {
-    toast_button_dyn(id, p, label, primary)
-}
-
-pub fn toast_button_dyn(
     id: impl Into<gpui::ElementId>,
     p: Palette,
     label: impl Into<gpui::SharedString>,

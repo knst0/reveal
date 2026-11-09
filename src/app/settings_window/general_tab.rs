@@ -117,9 +117,7 @@ impl SettingsWindow {
                             this.state.notice = Some("Setting defaults\u{2026}".to_owned());
                             cx.spawn(async move |this, cx| {
                                 let notice = cx
-                                    .background_spawn(async {
-                                        reveal::settings::association_notice()
-                                    })
+                                    .background_spawn(async { reveal::associations::notice() })
                                     .await;
                                 let _ = this.update(cx, |this, cx| {
                                     this.state.notice = Some(notice);

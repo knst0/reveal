@@ -1,20 +1,13 @@
 use std::path::{Path, PathBuf};
 
 use reveal::decode::{DecodeRequest, Decoded, Orientation, decode};
-use reveal::render::Resample;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/avif").join(name)
 }
 
 fn request<'a>(path: &'a Path, bytes: &'a [u8]) -> DecodeRequest<'a> {
-    DecodeRequest {
-        path,
-        bytes,
-        target_width: 256,
-        target_height: 256,
-        resample: Resample::Filtered,
-    }
+    DecodeRequest { path, bytes, target_width: 256, target_height: 256 }
 }
 
 #[test]

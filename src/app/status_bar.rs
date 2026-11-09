@@ -5,6 +5,8 @@ use gpui::{
 };
 use reveal::icons::Icon;
 use reveal::input::Action;
+
+use super::labels::action_label;
 use reveal::render::FitMode;
 use reveal::ui::{self, MenuItem, Palette};
 
@@ -58,11 +60,16 @@ impl RevealApp {
                                     ui::menu_surface(p)
                                         .occlude()
                                         .min_w(px(160.))
-                                        .child(zoom_menu_item(cx, "Fit to Window", FitMode::Fit, p))
-                                        .child(zoom_menu_item(cx, "Fit Best", FitMode::FitBest, p))
+                                        .child(zoom_menu_item(cx, Action::ImgFit, FitMode::Fit, p))
                                         .child(zoom_menu_item(
                                             cx,
-                                            "Original Size",
+                                            Action::ImgFitBest,
+                                            FitMode::FitBest,
+                                            p,
+                                        ))
+                                        .child(zoom_menu_item(
+                                            cx,
+                                            Action::ImgOrig,
                                             FitMode::Original,
                                             p,
                                         )),
@@ -83,10 +90,11 @@ impl RevealApp {
 
 fn zoom_menu_item(
     cx: &mut Context<RevealApp>,
-    label: &'static str,
+    action: Action,
     fit: FitMode,
     p: Palette,
 ) -> impl IntoElement {
+    let label = action_label(action);
     MenuItem::new(label, label).render(p).on_click(cx.listener(move |this, _e, _w, cx| {
         this.set_fit_and_close_menu(fit);
         cx.notify();

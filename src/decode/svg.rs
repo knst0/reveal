@@ -166,10 +166,6 @@ pub fn warm_font_database() {
 
 pub const SVG_EXTENSIONS: &[&str] = &["svg", "svgz"];
 
-pub fn is_svg_extension(ext: &str) -> bool {
-    SVG_EXTENSIONS.iter().any(|want| ext.eq_ignore_ascii_case(want))
-}
-
 fn looks_like_svg(bytes: &[u8]) -> bool {
     let head_len = bytes.len().min(1024);
     let head = String::from_utf8_lossy(&bytes[..head_len]);
@@ -181,8 +177,8 @@ fn is_gzip(bytes: &[u8]) -> bool {
 }
 
 impl Decoder for SvgDecoder {
-    fn name(&self) -> &'static str {
-        "svg"
+    fn extensions(&self) -> &'static [&'static str] {
+        SVG_EXTENSIONS
     }
 
     fn probe(&self, req: &DecodeRequest<'_>) -> bool {

@@ -3,13 +3,7 @@ use std::path::Path;
 use reveal::decode::{self, DecodeRequest, Decoded, Orientation};
 
 fn req<'a>(path: &'a Path, bytes: &'a [u8]) -> DecodeRequest<'a> {
-    DecodeRequest {
-        path,
-        bytes,
-        target_width: 256,
-        target_height: 256,
-        resample: reveal::render::Resample::Filtered,
-    }
+    DecodeRequest { path, bytes, target_width: 256, target_height: 256 }
 }
 
 fn png_bytes(w: u32, h: u32) -> Vec<u8> {
@@ -172,13 +166,7 @@ fn renders_svg_text_with_system_fonts() {
 fn svg_rasterisation_stays_within_the_pixel_budget() {
     let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="10000" height="10000"><rect width="10000" height="10000" fill="blue"/></svg>"#;
     let path = Path::new("huge.svg");
-    let request = DecodeRequest {
-        path,
-        bytes: svg,
-        target_width: 8000,
-        target_height: 8000,
-        resample: reveal::render::Resample::Filtered,
-    };
+    let request = DecodeRequest { path, bytes: svg, target_width: 8000, target_height: 8000 };
     let out = decode::decode(&request).unwrap();
     let Decoded::Still(img) = out.decoded else { panic!("expected still") };
     let pixels = img.width as u64 * img.height as u64;

@@ -1,3 +1,4 @@
+use reveal::cache::CachedImage;
 use reveal::decode::{DecodeOutput, Decoded, DecodedImage, Orientation};
 use reveal::viewer::{Presentation, ViewState};
 use std::fs;
@@ -24,7 +25,7 @@ fn opens_an_image_and_indexes_its_directory() {
     let dir = fixture("open", 3);
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&dir.join("1.png")).unwrap();
+    v.open(&dir.join("1.png"));
     v.settle();
 
     assert_eq!(v.presentation.current_path().unwrap(), dir.join("1.png"));
@@ -41,7 +42,7 @@ fn reloads_the_shown_file_once_its_change_on_disk_settles() {
     let path = dir.join("0.png");
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&path).unwrap();
+    v.open(&path);
     v.settle();
     assert_eq!(v.presentation.current_source_size(), (300, 200));
     assert!(!v.reload_if_source_changed(), "an untouched file is not reloaded");
@@ -65,7 +66,7 @@ fn navigates_forward_and_wraps() {
     let dir = fixture("nav", 3);
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&dir.join("2.png")).unwrap();
+    v.open(&dir.join("2.png"));
     v.settle();
 
     v.navigate(Navigation::Next);
@@ -83,7 +84,7 @@ fn fit_modes_change_the_zoom() {
     let dir = fixture("fit", 1);
     let mut v = Viewer::new();
     v.set_viewport(900.0, 600.0);
-    v.open(&dir.join("0.png")).unwrap();
+    v.open(&dir.join("0.png"));
     v.settle();
 
     v.set_fit(FitMode::Original);
@@ -102,7 +103,7 @@ fn a_broken_image_reports_status_instead_of_crashing() {
 
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&bad).unwrap();
+    v.open(&bad);
     v.settle();
 
     assert!(v.session.status().is_some(), "should surface an error");
@@ -116,14 +117,14 @@ fn antialias_toggle_persists_across_navigation() {
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
     v.set_antialias(false);
-    v.open(&dir.join("0.png")).unwrap();
+    v.open(&dir.join("0.png"));
     v.settle();
     assert!(!v.view.antialias());
 
     v.navigate(Navigation::Next);
     assert!(!v.view.antialias(), "navigation keeps the chosen resample mode");
 
-    v.toggle_antialias();
+    v.set_antialias(true);
     assert!(v.view.antialias());
     v.navigate(Navigation::Next);
     assert!(v.view.antialias());
@@ -136,7 +137,7 @@ fn nearest_zoom_builds_its_full_res_base_lazily() {
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
     v.set_antialias(false);
-    v.open(&dir.join("big.png")).unwrap();
+    v.open(&dir.join("big.png"));
     v.settle();
     assert!(v.render_image().is_some());
     assert!(v.presentation.render_crop().is_none(), "fit zoom must not magnify");
@@ -159,7 +160,7 @@ fn panning_switches_to_free_mode() {
     let dir = fixture("pan", 1);
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&dir.join("0.png")).unwrap();
+    v.open(&dir.join("0.png"));
     v.settle();
 
     v.view.zoom_at(4.0, (400.0, 300.0));
@@ -174,7 +175,7 @@ fn navigation_does_not_block_on_decode() {
     let dir = fixture("nonblock", 6);
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&dir.join("0.png")).unwrap();
+    v.open(&dir.join("0.png"));
     v.settle();
 
     let start = std::time::Instant::now();
@@ -207,7 +208,7 @@ fn the_reported_size_is_the_original_not_the_downscaled_copy() {
     let dir = large_fixture("truesize", 1920, 1080);
     let mut v = Viewer::new();
     v.set_viewport(640.0, 400.0);
-    v.open(&dir.join("big.png")).unwrap();
+    v.open(&dir.join("big.png"));
     v.settle();
 
     assert_eq!(v.presentation.current_source_size(), (1920, 1080));
@@ -222,7 +223,7 @@ fn original_shows_true_pixels_even_when_a_downscaled_copy_is_rendered() {
     let dir = large_fixture("original", 1920, 1080);
     let mut v = Viewer::new();
     v.set_viewport(640.0, 400.0);
-    v.open(&dir.join("big.png")).unwrap();
+    v.open(&dir.join("big.png"));
     v.settle();
 
     v.set_fit(FitMode::Original);
@@ -242,7 +243,7 @@ fn opening_a_directory_shows_its_first_file() {
     let dir = fixture("dirarg", 3);
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&dir).unwrap();
+    v.open(&dir);
     v.settle();
 
     assert_eq!(v.presentation.current_path().unwrap(), dir.join("0.png"));
@@ -256,7 +257,7 @@ fn deferred_reprepare_coalesces_viewport_changes() {
     let dir = large_fixture("coalesce", 1920, 1080);
     let mut v = Viewer::new();
     v.set_viewport(640.0, 400.0);
-    v.open(&dir.join("big.png")).unwrap();
+    v.open(&dir.join("big.png"));
     v.settle();
     let initial = v.presentation.current_intrinsic();
 
@@ -274,7 +275,7 @@ fn deferred_reprepare_coalesces_viewport_changes() {
 
     let mut reference = Viewer::new();
     reference.set_viewport(900.0, 600.0);
-    reference.open(&dir.join("big.png")).unwrap();
+    reference.open(&dir.join("big.png"));
     reference.settle();
     assert_eq!(
         v.presentation.current_intrinsic(),
@@ -289,7 +290,7 @@ fn deferred_reprepare_preserves_free_zoom_ratio() {
     let dir = large_fixture("freezoom", 1920, 1080);
     let mut v = Viewer::new();
     v.set_viewport(640.0, 400.0);
-    v.open(&dir.join("big.png")).unwrap();
+    v.open(&dir.join("big.png"));
     v.settle();
 
     v.view.pan((25.0, -10.0));
@@ -315,14 +316,14 @@ fn open_returns_before_the_scan_and_the_first_decode() {
     v.set_viewport(800.0, 600.0);
 
     let start = std::time::Instant::now();
-    v.open(&dir.join("7.png")).unwrap();
+    v.open(&dir.join("7.png"));
     let elapsed = start.elapsed();
 
     assert!(
         elapsed < std::time::Duration::from_millis(30),
         "open should not block on scan or decode, took {elapsed:?}"
     );
-    assert!(v.needs_ticking(), "the viewer must keep ticking while startup is in flight");
+    assert!(v.session.scan_pending(), "the startup scan must still be in flight");
 
     v.settle();
     assert_eq!(v.presentation.current_path().unwrap(), dir.join("7.png"));
@@ -339,7 +340,7 @@ fn open_then_navigate_lands_on_the_expected_path() {
     let dir = fixture("safety-nav", 4);
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&dir.join("0.png")).unwrap();
+    v.open(&dir.join("0.png"));
     v.settle();
     assert_eq!(v.presentation.current_path().unwrap(), dir.join("0.png"));
 
@@ -362,7 +363,7 @@ fn set_antialias_preserves_zoom_and_pan() {
     let dir = fixture("safety-aa", 1);
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&dir.join("0.png")).unwrap();
+    v.open(&dir.join("0.png"));
     v.settle();
 
     v.view.pan((25.0, -10.0));
@@ -386,7 +387,7 @@ fn a_failed_decode_surfaces_a_status_and_clears_current() {
 
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&bad).unwrap();
+    v.open(&bad);
     v.settle();
 
     assert!(v.session.status().is_some(), "a decode failure must surface via status()");
@@ -401,7 +402,7 @@ fn a_late_scan_realigns_to_the_canonical_path() {
 
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&indirect).unwrap();
+    v.open(&indirect);
     v.settle();
 
     assert_eq!(v.presentation.current_path().unwrap(), dir.join("1.png"));
@@ -420,14 +421,14 @@ fn presentation_renders_an_in_memory_image_without_any_io() {
             height: 32,
         }),
         orientation: Orientation::Normal,
-        display: None,
     });
 
     let view = ViewState { viewport: (640.0, 480.0), scale_factor: 1.0, ..ViewState::default() };
     let mut presentation = Presentation::new();
 
     let path = PathBuf::from("in-memory.png");
-    assert!(presentation.present(&path, Some(output), &view));
+    let entry = CachedImage { path: path.clone(), output, display: None, bytes: 0, stamp: None };
+    assert!(presentation.present(&path, Some(&entry), reveal::viewer::Origin::File, &view));
 
     assert_eq!(presentation.current_path().unwrap(), path);
     assert_eq!(presentation.current_source_size(), (64, 32));

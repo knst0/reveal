@@ -6,8 +6,9 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
 use super::{LoadRequest, RequestId, measure};
-use crate::decode::{self, DecodeError, DecodeRequest};
+use crate::decode::{self, DecodeError, DecodeRequest, Decoded};
 use crate::directory::FileStamp;
+use crate::render::{self, RenderConfig};
 
 #[derive(Debug)]
 pub struct LoadResult {
@@ -78,24 +79,11 @@ impl Loader {
         dropped
     }
 
-    pub fn request(
-        &self,
-        path: PathBuf,
-        index: usize,
-        target: (u32, u32),
-        resample: crate::render::Resample,
-    ) -> RequestId {
+    pub fn request(&self, path: PathBuf, index: usize, render: RenderConfig) -> RequestId {
         let id = RequestId(self.next_id.fetch_add(1, Ordering::Relaxed));
         let (lock, cvar) = &*self.shared;
         let mut queue = lock.lock().unwrap();
-        queue.pending.push(LoadRequest {
-            id,
-            path,
-            index,
-            target_width: target.0,
-            target_height: target.1,
-            resample,
-        });
+        queue.pending.push(LoadRequest { id, path, index, render });
         cvar.notify_one();
         id
     }
@@ -105,16 +93,6 @@ impl Loader {
         let mut queue = lock.lock().unwrap();
         queue.pending.retain(|r| r.id != id);
         queue.cancelled.insert(id);
-    }
-
-    pub fn cancel_all_except(&self, keep: &[RequestId]) {
-        let (lock, _) = &*self.shared;
-        let mut queue = lock.lock().unwrap();
-        let keep: HashSet<RequestId> = keep.iter().copied().collect();
-        let dropped: Vec<RequestId> =
-            queue.pending.iter().filter(|r| !keep.contains(&r.id)).map(|r| r.id).collect();
-        queue.pending.retain(|r| keep.contains(&r.id));
-        queue.cancelled.extend(dropped);
     }
 
     pub fn pending_len(&self) -> usize {
@@ -209,17 +187,26 @@ fn load(request: &LoadRequest) -> Result<super::CachedImage, DecodeError> {
             decode::decode(&DecodeRequest {
                 path: &request.path,
                 bytes: &bytes,
-                target_width: request.target_width,
-                resample: request.resample,
-                target_height: request.target_height,
+                target_width: request.render.physical.0,
+                target_height: request.render.physical.1,
             })
         }))
     })
     .map_err(|_| DecodeError::Decode("decoder panicked on this file".to_owned()))??;
+    let display = match (&output.decoded, request.render.fits()) {
+        (Decoded::Still(image), true) => Some(Arc::new(render::prepare_display(
+            image,
+            output.orientation,
+            (request.render.physical.0 as f32, request.render.physical.1 as f32),
+            request.render.resample,
+        ))),
+        _ => None,
+    };
     Ok(super::CachedImage {
         path: request.path.clone(),
-        bytes: measure(&output),
+        bytes: measure(&output, display.as_deref()),
         output: Arc::new(output),
+        display,
         stamp,
     })
 }

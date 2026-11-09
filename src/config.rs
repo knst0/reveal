@@ -7,19 +7,6 @@ pub const CACHE_FILE: &str = "cache.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Title {
-    pub displayed_folders: Option<u32>,
-    pub show_program_name: bool,
-}
-
-impl Default for Title {
-    fn default() -> Self {
-        Self { displayed_folders: Some(1), show_program_name: true }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct ConfigWindow {
     pub dark: bool,
     pub antialias: bool,
@@ -190,20 +177,8 @@ impl Updates {
 #[serde(default)]
 pub struct Configuration {
     pub window: ConfigWindow,
-    pub title: Title,
     pub bindings: Option<std::collections::BTreeMap<String, Vec<String>>>,
-    pub commands: Vec<CommandDefinition>,
     pub updates: Updates,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommandDefinition {
-    pub input: Vec<String>,
-    pub program: String,
-    #[serde(default)]
-    pub args: Vec<String>,
-    #[serde(default)]
-    pub envs: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,24 +188,13 @@ pub struct CacheWindow {
     pub y: i32,
     pub w: u32,
     pub h: u32,
-    pub dark: bool,
     pub maximized: bool,
     pub fullscreen: bool,
-    pub show_bottom_bar: bool,
 }
 
 impl Default for CacheWindow {
     fn default() -> Self {
-        Self {
-            x: 64,
-            y: 64,
-            w: 1280,
-            h: 800,
-            dark: true,
-            maximized: false,
-            fullscreen: false,
-            show_bottom_bar: true,
-        }
+        Self { x: 64, y: 64, w: 1280, h: 800, maximized: false, fullscreen: false }
     }
 }
 
@@ -238,7 +202,6 @@ impl Default for CacheWindow {
 #[serde(default)]
 pub struct Cache {
     pub window: CacheWindow,
-    pub current_dir: Option<PathBuf>,
     pub last_update_check: Option<u64>,
     pub update_skipped_version: Option<String>,
     pub update_pending_version: Option<String>,

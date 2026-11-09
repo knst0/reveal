@@ -98,10 +98,6 @@ pub fn mime_list() -> Vec<&'static str> {
     mimes
 }
 
-pub fn extensions() -> Vec<&'static str> {
-    FORMATS.iter().map(|f| f.extension).collect()
-}
-
 fn uti(mime: &str, extension: &str) -> String {
     match mime {
         "image/png" => "public.png".to_owned(),
@@ -177,7 +173,7 @@ mod tests {
 
     #[test]
     fn every_decodable_extension_can_be_registered() {
-        let registered = extensions();
+        let registered: Vec<&str> = FORMATS.iter().map(|format| format.extension).collect();
         for ext in crate::decode::supported_extensions() {
             assert!(
                 registered.contains(&ext),

@@ -8,7 +8,7 @@ mod svg;
 use std::path::Path;
 use std::time::Duration;
 
-pub use raster::{MAX_ANIMATION_BYTES, is_raster_extension};
+pub use raster::MAX_ANIMATION_BYTES;
 pub use svg::warm_font_database;
 
 #[derive(Debug, Clone)]
@@ -42,40 +42,33 @@ pub enum Orientation {
     Rotate270,
 }
 
+impl Orientation {
+    /// Rotations and transposes by 90 degrees exchange width and height.
+    pub fn swaps_axes(self) -> bool {
+        matches!(
+            self,
+            Orientation::Rotate90
+                | Orientation::Rotate270
+                | Orientation::Transpose
+                | Orientation::Transverse
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DecodeRequest<'a> {
     pub path: &'a Path,
     pub bytes: &'a [u8],
+    /// Preferred raster size for decoders that can render at a resolution
+    /// (SVG, raw previews). Decoding itself never resamples raster images.
     pub target_width: u32,
     pub target_height: u32,
-    pub resample: crate::render::Resample,
-}
-
-fn build_display(
-    decoded: &Decoded,
-    orientation: Orientation,
-    req: &DecodeRequest<'_>,
-) -> Option<std::sync::Arc<crate::render::Display>> {
-    let Decoded::Still(image) = decoded else {
-        return None;
-    };
-    if req.target_width == 0 || req.target_height == 0 {
-        return None;
-    }
-    let physical = (req.target_width as f32, req.target_height as f32);
-    Some(std::sync::Arc::new(crate::render::prepare_display(
-        image,
-        orientation,
-        physical,
-        req.resample,
-    )))
 }
 
 #[derive(Debug, Clone)]
 pub struct DecodeOutput {
     pub decoded: Decoded,
     pub orientation: Orientation,
-    pub display: Option<std::sync::Arc<crate::render::Display>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -91,7 +84,9 @@ pub enum DecodeError {
 }
 
 pub trait Decoder: Send + Sync {
-    fn name(&self) -> &'static str;
+    /// Extensions this decoder accepts. This list drives directory filtering
+    /// and the open dialog; `formats` adds MIME/description metadata per type.
+    fn extensions(&self) -> &'static [&'static str];
     fn probe(&self, req: &DecodeRequest<'_>) -> bool;
     fn decode(&self, req: &DecodeRequest<'_>) -> Result<Decoded, DecodeError>;
 
@@ -100,10 +95,10 @@ pub trait Decoder: Send + Sync {
     }
 }
 
-fn decoders() -> Vec<&'static dyn Decoder> {
+fn decoders() -> &'static [&'static dyn Decoder] {
     #[cfg(feature = "raw")]
     {
-        vec![
+        &[
             &svg::SvgDecoder,
             &jxl::JxlDecoder,
             &avif::AvifDecoder,
@@ -113,13 +108,13 @@ fn decoders() -> Vec<&'static dyn Decoder> {
     }
     #[cfg(not(feature = "raw"))]
     {
-        vec![&svg::SvgDecoder, &jxl::JxlDecoder, &avif::AvifDecoder, &raster::RasterDecoder]
+        &[&svg::SvgDecoder, &jxl::JxlDecoder, &avif::AvifDecoder, &raster::RasterDecoder]
     }
 }
 
 /// Case-insensitive extension match without allocating a lowered `String`.
 /// Hot paths (`is_supported` per directory entry, decoder `probe` per load)
-/// call this instead of `extension_of`.
+/// call this instead of allocating an extension string.
 pub fn has_extension(path: &Path, allowed: &[&str]) -> bool {
     let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
         return false;
@@ -127,48 +122,21 @@ pub fn has_extension(path: &Path, allowed: &[&str]) -> bool {
     allowed.iter().any(|want| ext.eq_ignore_ascii_case(want))
 }
 
-fn path_extension(path: &Path) -> Option<&str> {
-    path.extension().and_then(|e| e.to_str())
-}
-
 pub fn decode(req: &DecodeRequest<'_>) -> Result<DecodeOutput, DecodeError> {
-    let list = decoders();
-    let decoder = list.iter().find(|d| d.probe(req)).ok_or(DecodeError::NoDecoder)?;
+    let decoder =
+        decoders().iter().copied().find(|d| d.probe(req)).ok_or(DecodeError::NoDecoder)?;
     let decoded = decoder.decode(req)?;
     let orientation = decoder.orientation(req).unwrap_or_else(|| exif_orientation(req.bytes));
-    let display = build_display(&decoded, orientation, req);
-    Ok(DecodeOutput { decoded, orientation, display })
-}
-
-pub fn extension_of(path: &Path) -> Option<String> {
-    path_extension(path).map(|e| e.to_ascii_lowercase())
+    Ok(DecodeOutput { decoded, orientation })
 }
 
 pub fn is_supported(path: &Path) -> bool {
-    let Some(ext) = path_extension(path) else {
-        return false;
-    };
-    if is_raster_extension(ext)
-        || svg::is_svg_extension(ext)
-        || jxl::is_jxl_extension(ext)
-        || avif::is_avif_extension(ext)
-    {
-        return true;
-    }
-    #[cfg(feature = "raw")]
-    if raw::is_raw_extension(ext) {
-        return true;
-    }
-    false
+    decoders().iter().any(|decoder| has_extension(path, decoder.extensions()))
 }
 
 pub fn supported_extensions() -> Vec<&'static str> {
-    let mut list: Vec<&'static str> = raster::RASTER_EXTENSIONS.to_vec();
-    list.extend_from_slice(svg::SVG_EXTENSIONS);
-    list.extend_from_slice(jxl::JXL_EXTENSIONS);
-    list.extend_from_slice(avif::AVIF_EXTENSIONS);
-    #[cfg(feature = "raw")]
-    list.extend_from_slice(raw::RAW_EXTENSIONS);
+    let mut list: Vec<&'static str> =
+        decoders().iter().flat_map(|decoder| decoder.extensions()).copied().collect();
     list.sort_unstable();
     list.dedup();
     list

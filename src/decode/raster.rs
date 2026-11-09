@@ -14,10 +14,6 @@ pub const RASTER_EXTENSIONS: &[&str] = &[
     "pbm", "pgm", "ppm", "pam", "exr", "hdr",
 ];
 
-pub fn is_raster_extension(ext: &str) -> bool {
-    ImageFormat::from_extension(ext).is_some_and(|f| f.reading_enabled())
-}
-
 fn sniff(bytes: &[u8]) -> Option<ImageFormat> {
     image::guess_format(bytes).ok()
 }
@@ -88,8 +84,8 @@ fn decode_animated(format: ImageFormat, bytes: &[u8]) -> Option<Result<Vec<Frame
 }
 
 impl Decoder for RasterDecoder {
-    fn name(&self) -> &'static str {
-        "raster"
+    fn extensions(&self) -> &'static [&'static str] {
+        RASTER_EXTENSIONS
     }
 
     fn probe(&self, req: &DecodeRequest<'_>) -> bool {
@@ -118,12 +114,16 @@ impl Decoder for RasterDecoder {
 
 #[cfg(test)]
 mod tests {
-    use super::{RASTER_EXTENSIONS, is_raster_extension};
+    use super::RasterDecoder;
+    use crate::decode::Decoder;
 
     #[test]
     fn every_listed_raster_extension_is_actually_supported() {
-        for ext in RASTER_EXTENSIONS {
-            assert!(is_raster_extension(ext), "{ext} is listed but not decodable");
+        for ext in RasterDecoder.extensions() {
+            assert!(
+                image::ImageFormat::from_extension(ext).is_some_and(|f| f.reading_enabled()),
+                "{ext} is listed but not decodable"
+            );
         }
     }
 }

@@ -1,9 +1,10 @@
 use std::fs;
 
-use reveal::actions::{Theme, first_frame, move_to_trash};
+use reveal::actions::{first_frame, move_to_trash};
 use reveal::config::{Cache, Channel, Updates};
 use reveal::decode::{Decoded, DecodedImage, Frame};
 use reveal::panic_report::format_report;
+use reveal::ui::Theme;
 use reveal::update::{
     CHECK_INTERVAL, UpdateNotice, accepts, changelog_url, current_version, is_due, is_newer,
     is_prerelease, is_skipped, pick_upgrade, skip_version, take_upgrade_notice,
@@ -45,15 +46,11 @@ fn trash_removes_the_file_from_its_directory() {
 }
 
 #[test]
-fn theme_toggles_and_changes_colours() {
-    let dark = Theme::Dark;
-    let light = dark.toggled();
-    assert_eq!(light, Theme::Light);
-    assert_eq!(light.toggled(), Theme::Dark);
-    assert!(dark.is_dark());
-    assert_ne!(dark.background(), light.background());
-    assert_ne!(dark.text(), light.text());
+fn theme_follows_the_dark_flag() {
+    assert_eq!(Theme::from_dark(true), Theme::Dark);
     assert_eq!(Theme::from_dark(false), Theme::Light);
+    assert!(Theme::Dark.is_dark());
+    assert!(!Theme::Light.is_dark());
 }
 
 #[test]

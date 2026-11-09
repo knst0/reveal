@@ -1,13 +1,10 @@
 use reveal::input::{Action, Binding};
 
-pub const APP_NAME: &str = "Reveal";
+pub const APP_NAME: &str = reveal::about::NAME;
 
-pub fn title_for(path: Option<&std::path::Path>) -> String {
-    match path {
-        Some(path) => {
-            let name = path.file_name().unwrap_or_default().to_string_lossy();
-            format!("{name} \u{2014} {APP_NAME}")
-        }
+pub fn title_for_name(name: Option<&str>) -> String {
+    match name {
+        Some(name) => format!("{name} \u{2014} {APP_NAME}"),
         None => APP_NAME.to_owned(),
     }
 }
@@ -87,18 +84,17 @@ pub fn action_label(action: Action) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{action_label, format_binding, pretty_key, title_for};
+    use super::{action_label, format_binding, pretty_key, title_for_name};
     use reveal::input::{Action, Binding};
-    use std::path::Path;
 
     #[test]
     fn title_uses_filename_with_app_suffix() {
-        assert_eq!(title_for(Some(Path::new("/a/b/photo.jpg"))), "photo.jpg \u{2014} Reveal");
+        assert_eq!(title_for_name(Some("photo.jpg")), "photo.jpg \u{2014} Reveal");
     }
 
     #[test]
     fn title_falls_back_to_app_name_when_empty() {
-        assert_eq!(title_for(None), "Reveal");
+        assert_eq!(title_for_name(None), "Reveal");
     }
 
     #[test]

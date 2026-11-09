@@ -62,6 +62,35 @@ pub enum Resample {
     Nearest,
 }
 
+/// Everything needed to turn decoded pixels into a display texture.
+/// Derived from the viewer's `ViewState` once per frame, then shared by the
+/// cache worker and the presentation layer so the two cannot disagree.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RenderConfig {
+    /// Physical target size in device pixels.
+    pub physical: (u32, u32),
+    /// Logical pixels per physical pixel, used to report an intrinsic size.
+    pub dpr: f32,
+    pub resample: Resample,
+}
+
+impl Default for RenderConfig {
+    fn default() -> Self {
+        Self { physical: (0, 0), dpr: 1.0, resample: Resample::Filtered }
+    }
+}
+
+impl RenderConfig {
+    pub fn with_target(mut self, width: u32, height: u32) -> Self {
+        self.physical = (width, height);
+        self
+    }
+
+    pub fn fits(&self) -> bool {
+        self.physical.0 > 0 && self.physical.1 > 0
+    }
+}
+
 impl Resample {
     pub fn from_antialias(antialias: bool) -> Self {
         if antialias { Resample::Filtered } else { Resample::Nearest }
@@ -313,7 +342,6 @@ pub fn orient_in_order(
         }
     }
 
-    let _ = out_h;
     DecodedImage { rgba: out, width: out_w as u32, height: out_h as u32 }
 }
 
@@ -347,13 +375,7 @@ pub fn downscaled_size(size: (u32, u32), display: (f32, f32)) -> (u32, u32) {
 }
 
 pub fn oriented_size(size: (u32, u32), orientation: Orientation) -> (u32, u32) {
-    match orientation {
-        Orientation::Rotate90
-        | Orientation::Rotate270
-        | Orientation::Transpose
-        | Orientation::Transverse => (size.1, size.0),
-        _ => size,
-    }
+    if orientation.swaps_axes() { (size.1, size.0) } else { size }
 }
 
 fn bgra_in_place(mut image: DecodedImage) -> DecodedImage {
@@ -362,13 +384,7 @@ fn bgra_in_place(mut image: DecodedImage) -> DecodedImage {
 }
 
 fn unoriented_target(physical: (f32, f32), orientation: Orientation) -> (f32, f32) {
-    match orientation {
-        Orientation::Rotate90
-        | Orientation::Rotate270
-        | Orientation::Transpose
-        | Orientation::Transverse => (physical.1, physical.0),
-        _ => physical,
-    }
+    if orientation.swaps_axes() { (physical.1, physical.0) } else { physical }
 }
 
 #[derive(Clone)]

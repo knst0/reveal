@@ -1,18 +1,10 @@
-use gpui::{Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement};
+use gpui::{
+    AppContext, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+};
 use reveal::ui::{self, Palette};
 use reveal::update::{self, UpdateNotice, UpdateStatus};
 
 use super::RevealApp;
-
-async fn on_blocking_thread<T: Send + 'static>(
-    work: impl FnOnce() -> T + Send + 'static,
-) -> Option<T> {
-    let (tx, rx) = futures::channel::oneshot::channel();
-    std::thread::spawn(move || {
-        let _ = tx.send(work());
-    });
-    rx.await.ok()
-}
 
 impl RevealApp {
     pub fn save_cache(&self) {
@@ -27,20 +19,18 @@ impl RevealApp {
         }
         self.save_cache();
 
-        if !update::should_run_check(&self.update_settings, &self.cache) {
+        if !update::should_run_check(&self.config.updates, &self.cache) {
             return;
         }
 
-        let channel = self.update_settings.channel;
-        let auto = self.update_settings.should_auto_install();
+        let channel = self.config.updates.channel;
+        let auto = self.config.updates.should_auto_install();
         cx.spawn(async move |this, cx| {
-            let Some(status) = on_blocking_thread(move || {
-                if auto { update::install(channel) } else { update::check(channel) }
-            })
-            .await
-            else {
-                return;
-            };
+            let status = cx
+                .background_spawn(async move {
+                    if auto { update::install(channel) } else { update::check(channel) }
+                })
+                .await;
 
             this.update(cx, |this, cx| {
                 update::record_check(&mut this.cache);
@@ -79,14 +69,12 @@ impl RevealApp {
         if self.update_busy {
             return;
         }
-        let channel = self.update_settings.channel;
+        let channel = self.config.updates.channel;
         self.update_busy = true;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
-            let Some(status) = on_blocking_thread(move || update::install(channel)).await else {
-                return;
-            };
+            let status = cx.background_spawn(async move { update::install(channel) }).await;
             this.update(cx, |this, cx| {
                 this.update_busy = false;
                 match status {
@@ -116,8 +104,8 @@ impl RevealApp {
     }
 
     fn disable_update_checks(&mut self) {
-        self.update_settings.check = false;
         self.config.updates.check = false;
+        self.config.updates.auto_install = false;
         if let Some(UpdateNotice::Available { version } | UpdateNotice::Managed { version, .. }) =
             &self.update_notice
         {
@@ -144,7 +132,7 @@ impl RevealApp {
                     p,
                     format!(
                         "Version {version} is ready to install ({} channel).",
-                        self.update_settings.channel.label().to_lowercase()
+                        self.config.updates.channel.label().to_lowercase()
                     ),
                 ))
                 .child(

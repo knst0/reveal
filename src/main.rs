@@ -33,10 +33,8 @@ fn main() {
     let mut viewer = Viewer::new();
     viewer.set_viewport(1280.0, 800.0);
     viewer.set_antialias(config.window.antialias);
-    if let Some(path) = args.path.as_deref()
-        && let Err(e) = viewer.open(path)
-    {
-        eprintln!("failed to open {}: {e}", path.display());
+    if let Some(path) = args.path.as_deref() {
+        viewer.open(path);
     }
 
     let cache = reveal::config::Cache::load();

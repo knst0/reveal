@@ -5,7 +5,6 @@ pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 
-pub const RUSTC: &str = env!("REVEAL_RUSTC");
 pub const COMMIT: &str = env!("REVEAL_COMMIT");
 
 pub struct Dependency {
@@ -39,38 +38,6 @@ pub fn version_line() -> String {
     }
 }
 
-pub fn features() -> Vec<&'static str> {
-    let mut features = Vec::new();
-    if cfg!(feature = "raw") {
-        features.push("raw");
-    }
-    if cfg!(feature = "updates") {
-        features.push("updates");
-    }
-    features
-}
-
-pub fn features_line() -> String {
-    let features = features();
-    if features.is_empty() { "none".to_owned() } else { features.join(", ") }
-}
-
-pub fn rustc_line() -> &'static str {
-    if RUSTC.is_empty() { "unknown" } else { RUSTC }
-}
-
-pub fn format_count() -> usize {
-    crate::formats::mime_list().len()
-}
-
-pub fn extension_count() -> usize {
-    crate::formats::extensions().len()
-}
-
-pub fn icon_count() -> usize {
-    crate::icons::LUCIDE_ICONS.len()
-}
-
 pub fn config_location() -> Option<PathBuf> {
     crate::config::config_path()
 }
@@ -81,10 +48,6 @@ pub fn cache_location() -> Option<PathBuf> {
 
 pub fn issues_url() -> String {
     format!("{REPOSITORY}/issues")
-}
-
-pub fn licenses_url() -> String {
-    format!("{REPOSITORY}/blob/main/LICENSE")
 }
 
 #[cfg(test)]
@@ -137,10 +100,10 @@ mod tests {
         assert!(!names.is_empty(), "no dependencies parsed from the manifest");
 
         for name in names {
-            // gpui and gpui_platform are renames of the gpui-unofficial crates.
+            // The manifest aliases the upstream package names.
             let credited = match name {
-                "gpui" => "gpui-unofficial",
-                "gpui_platform" => "gpui-platform-gpui-unofficial",
+                "gpui" => "gpui-fast",
+                "gpui_platform" => "gpui-fast-platform",
                 other => other,
             };
             if (credited == "rawler" && !cfg!(feature = "raw"))

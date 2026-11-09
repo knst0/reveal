@@ -121,11 +121,6 @@ impl CacheStore {
         }
     }
 
-    pub fn clear(&mut self) {
-        self.entries.clear();
-        self.used_bytes = 0;
-    }
-
     pub fn reindex(&mut self, index_of: impl Fn(&Path) -> Option<usize>) {
         let stale: Vec<PathBuf> =
             self.entries.keys().filter(|p| index_of(p).is_none()).cloned().collect();

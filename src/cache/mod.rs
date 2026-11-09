@@ -15,7 +15,8 @@ pub enum RequestKind {
     Prefetch,
 }
 
-use crate::decode::{DecodeOutput, Orientation};
+use crate::decode::{DecodeError, DecodeOutput};
+use crate::render::{Display, RenderConfig};
 
 pub const DEFAULT_CAPACITY_BYTES: usize = 512 * 1024 * 1024;
 
@@ -23,15 +24,12 @@ pub const DEFAULT_CAPACITY_BYTES: usize = 512 * 1024 * 1024;
 pub struct CachedImage {
     pub path: PathBuf,
     pub output: Arc<DecodeOutput>,
+    /// Downscaled display texture built on the loader thread for the render
+    /// config that was current when the request was made.
+    pub display: Option<Arc<Display>>,
     pub bytes: usize,
     /// Source file identity taken from the same handle the bytes were read from.
     pub stamp: Option<crate::directory::FileStamp>,
-}
-
-impl CachedImage {
-    pub fn orientation(&self) -> Orientation {
-        self.output.orientation
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -42,20 +40,18 @@ pub struct LoadRequest {
     pub id: RequestId,
     pub path: PathBuf,
     pub index: usize,
-    pub target_width: u32,
-    pub target_height: u32,
-    pub resample: crate::render::Resample,
+    pub render: RenderConfig,
 }
 
-pub fn measure(output: &DecodeOutput) -> usize {
+pub type LoadOutcome = (PathBuf, Result<(), DecodeError>);
+
+pub fn measure(output: &DecodeOutput, display: Option<&Display>) -> usize {
     use crate::decode::Decoded;
     let decoded = match &output.decoded {
         Decoded::Still(img) => img.rgba.len(),
         Decoded::Animation(frames) => frames.iter().map(|f| f.image.rgba.len()).sum(),
     };
-    let display = output
-        .display
-        .as_ref()
+    let display = display
         .map_or(0, |d| (d.width as usize).saturating_mul(d.height as usize).saturating_mul(4));
     decoded.saturating_add(display)
 }

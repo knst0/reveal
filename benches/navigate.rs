@@ -35,7 +35,7 @@ fn corpus(dir: &std::path::Path, width: u32, height: u32) -> Vec<PathBuf> {
 fn open_at(files: &[PathBuf]) -> Viewer {
     let mut viewer = Viewer::new();
     viewer.set_viewport(VIEWPORT.0, VIEWPORT.1);
-    viewer.open(&files[0]).unwrap();
+    viewer.open(&files[0]);
     viewer.wait_for_scan();
     assert_eq!(
         viewer.session.directory.len(),

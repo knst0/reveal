@@ -88,7 +88,7 @@ fn review_bare_relative_cli_filename_must_survive_directory_scan() {
     image::RgbaImage::from_pixel(32, 32, image::Rgba([1, 2, 3, 255])).save(&fixture.0).unwrap();
     let mut viewer = Viewer::new();
     viewer.set_viewport(800.0, 600.0);
-    viewer.open(&fixture.0).unwrap();
+    viewer.open(&fixture.0);
     viewer.wait_for_scan();
     viewer.settle();
     println!(

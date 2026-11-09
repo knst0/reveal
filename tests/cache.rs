@@ -28,8 +28,8 @@ fn fake(path: &str, bytes: usize) -> CachedImage {
         output: Arc::new(DecodeOutput {
             decoded: Decoded::Still(DecodedImage { rgba: Vec::new(), width: 1, height: 1 }),
             orientation: Orientation::Normal,
-            display: None,
         }),
+        display: None,
         stamp: None,
     }
 }
@@ -134,14 +134,14 @@ fn prefetch_is_refused_when_oversized_but_explicit_open_fails_open() {
     let file_size = fs::metadata(&path).unwrap().len() as usize;
 
     let mut cache = ImageCache::new(file_size - 1, 1);
-    cache.set_target_size(16, 16);
+    cache.set_render_config(reveal::render::RenderConfig::default().with_target(16, 16));
 
-    cache.request_as(&path, 0, RequestKind::Prefetch);
-    cache.pump(0);
+    cache.request_as(&path, RequestKind::Prefetch);
+    cache.pump();
     assert!(cache.get(&path).is_none(), "oversized prefetch must be skipped");
     assert_eq!(cache.inflight_len(), 0);
 
-    let bytes = cache.block_on(&path, 0).expect("explicit open must fail open").bytes;
+    let bytes = cache.block_on(&path).expect("explicit open must fail open").bytes;
     assert!(cache.get(&path).is_some());
     assert_eq!(bytes, 32 * 32 * 4 + 16 * 16 * 4, "decoded pixels plus the display copy");
 
@@ -155,7 +155,7 @@ fn loader_decodes_off_the_calling_thread() {
     write_png(&path, 32);
 
     let loader = Loader::new(2);
-    loader.request(path.clone(), 0, (64, 64), reveal::render::Resample::Filtered);
+    loader.request(path.clone(), 0, reveal::render::RenderConfig::default().with_target(64, 64));
     let result = loader.recv().expect("a result");
 
     assert_eq!(result.path, path);
@@ -170,8 +170,7 @@ fn cancelled_requests_do_not_deliver_results() {
     let id = loader.request(
         PathBuf::from("nonexistent-abc.png"),
         0,
-        (1, 1),
-        reveal::render::Resample::Filtered,
+        reveal::render::RenderConfig::default().with_target(1, 1),
     );
     loader.cancel(id);
 
@@ -193,12 +192,12 @@ fn prefetches_both_neighbours_of_the_current_image() {
     let d = Directory::open_at(&dir.join("2.png")).unwrap();
 
     let mut cache = ImageCache::new(64 * 1024 * 1024, 2);
-    cache.set_target_size(100, 100);
+    cache.set_render_config(reveal::render::RenderConfig::default().with_target(100, 100));
     cache.prefetch_neighbours(&d);
 
     let deadline = Instant::now() + std::time::Duration::from_secs(5);
     while cache.store().len() < 2 && Instant::now() < deadline {
-        cache.pump(d.current_index());
+        cache.pump();
     }
 
     assert!(cache.get(&dir.join("1.png")).is_some(), "prev prefetched");
@@ -213,8 +212,8 @@ fn block_on_returns_the_requested_image() {
     write_png(&path, 16);
 
     let mut cache = ImageCache::new(64 * 1024 * 1024, 2);
-    cache.set_target_size(50, 50);
-    let image = cache.block_on(&path, 0).expect("loaded");
+    cache.set_render_config(reveal::render::RenderConfig::default().with_target(50, 50));
+    let image = cache.block_on(&path).expect("loaded");
     assert_eq!(image.bytes, 16 * 16 * 4 * 2, "decoded pixels plus the display copy");
     fs::remove_dir_all(&dir).unwrap();
 }
@@ -226,38 +225,7 @@ fn block_on_reports_decode_failure() {
     fs::write(&path, b"this is not a png").unwrap();
 
     let mut cache = ImageCache::new(1024 * 1024, 1);
-    assert!(cache.block_on(&path, 0).is_err());
-    fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn first_image_is_ready_before_the_directory_is_scanned() {
-    use reveal::startup;
-
-    let dir = temp_dir("coldstart");
-    let target = dir.join("000-target.png");
-    write_png(&target, 24);
-    for i in 0..300 {
-        write_png(&dir.join(format!("filler-{i:04}.png")), 4);
-    }
-
-    let mut cache = ImageCache::new(64 * 1024 * 1024, 2);
-
-    let t0 = Instant::now();
-    let first = startup::load_first_image(&mut cache, &target, (100, 100));
-    let after_first = t0.elapsed();
-    assert!(first.result.is_ok(), "first image must decode");
-    assert!(cache.get(&target).is_some());
-
-    let d = startup::scan_directory(&mut cache, &target).unwrap();
-    let after_scan = t0.elapsed();
-
-    assert_eq!(d.len(), 301);
-    assert!(cache.get(&target).is_some(), "scan must not drop the already-loaded image");
-    assert!(
-        after_first < after_scan,
-        "first image ({after_first:?}) must be ready before scan completes ({after_scan:?})"
-    );
+    assert!(cache.block_on(&path).is_err());
     fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -275,10 +243,18 @@ fn the_nearest_request_is_decoded_before_its_farther_neighbours() {
     loader.set_current_index(3);
     for (index, path) in paths.iter().enumerate() {
         if index != 3 {
-            loader.request(path.clone(), index, (16, 16), reveal::render::Resample::Filtered);
+            loader.request(
+                path.clone(),
+                index,
+                reveal::render::RenderConfig::default().with_target(16, 16),
+            );
         }
     }
-    loader.request(paths[3].clone(), 3, (16, 16), reveal::render::Resample::Filtered);
+    loader.request(
+        paths[3].clone(),
+        3,
+        reveal::render::RenderConfig::default().with_target(16, 16),
+    );
 
     let first = loader.recv().expect("a result");
     assert_eq!(first.index, 3, "the current image must be decoded first");
@@ -294,15 +270,15 @@ fn requests_outside_the_prefetch_window_are_cancelled() {
     }
 
     let mut cache = ImageCache::new(64 * 1024 * 1024, 1);
-    cache.set_target_size(16, 16);
+    cache.set_render_config(reveal::render::RenderConfig::default().with_target(16, 16));
     for n in 0..40 {
-        cache.request(&dir.join(format!("{n:02}.png")), n);
+        cache.request_at(&dir.join(format!("{n:02}.png")), n);
     }
-    cache.cancel_outside_window(0);
+    cache.cancel_outside_window();
     // Only queued requests can be cancelled: if this thread stalls while
     // queueing, the worker finishes far requests whose results are already
     // delivered. Absorb them, as the app does, before counting.
-    cache.pump(0);
+    cache.pump();
 
     let d = Directory::open_at(&dir.join("00.png")).unwrap();
     cache.sync_to_directory(&d);

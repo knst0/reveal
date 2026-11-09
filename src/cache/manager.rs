@@ -6,6 +6,7 @@ use super::{
 };
 use crate::decode::DecodeError;
 use crate::directory::Directory;
+use crate::render::RenderConfig;
 
 pub const PREFETCH_RADIUS: isize = 3;
 
@@ -17,8 +18,8 @@ pub struct ImageCache {
     store: CacheStore,
     loader: std::sync::Arc<Loader>,
     inflight: Vec<(PathBuf, RequestId)>,
-    target: (u32, u32),
-    resample: crate::render::Resample,
+    render: RenderConfig,
+    current: usize,
     last_index: Option<usize>,
     length: usize,
 }
@@ -39,23 +40,15 @@ impl ImageCache {
             store: CacheStore::new(capacity_bytes),
             loader: std::sync::Arc::new(Loader::new(threads)),
             inflight: Vec::new(),
-            target: (0, 0),
-            resample: crate::render::Resample::Filtered,
+            render: RenderConfig::default(),
+            current: 0,
             last_index: None,
             length: 0,
         }
     }
 
-    pub fn set_target_size(&mut self, width: u32, height: u32) {
-        self.target = (width, height);
-    }
-
-    pub fn resample(&self) -> crate::render::Resample {
-        self.resample
-    }
-
-    pub fn set_resample(&mut self, resample: crate::render::Resample) {
-        self.resample = resample;
+    pub fn set_render_config(&mut self, render: RenderConfig) {
+        self.render = render;
     }
 
     pub fn store(&self) -> &CacheStore {
@@ -70,12 +63,18 @@ impl ImageCache {
         self.store.get(path)
     }
 
-    pub fn request(&mut self, path: &Path, index: usize) {
-        self.request_with(path, index, RequestKind::Explicit, None);
+    pub fn request(&mut self, path: &Path) {
+        self.request_with(path, self.current, RequestKind::Explicit, None);
     }
 
-    pub fn request_as(&mut self, path: &Path, index: usize, kind: RequestKind) {
-        self.request_with(path, index, kind, None);
+    pub fn request_as(&mut self, path: &Path, kind: RequestKind) {
+        self.request_with(path, self.current, kind, None);
+    }
+
+    /// Requests a specific directory position. Used by prefetching and tests
+    /// that exercise queue ordering independently of the focused entry.
+    pub fn request_at(&mut self, path: &Path, index: usize) {
+        self.request_with(path, index, RequestKind::Explicit, None);
     }
 
     fn request_with(&mut self, path: &Path, index: usize, kind: RequestKind, size: Option<u64>) {
@@ -91,7 +90,7 @@ impl ImageCache {
                 }
             }
         }
-        let id = self.loader.request(path.to_path_buf(), index, self.target, self.resample);
+        let id = self.loader.request(path.to_path_buf(), index, self.render);
         self.inflight.push((path.to_path_buf(), id));
     }
 
@@ -119,18 +118,30 @@ impl ImageCache {
         self.inflight.len()
     }
 
-    pub fn set_current_index(&mut self, index: usize) {
+    fn set_current_index(&mut self, index: usize) {
+        self.current = index;
         let direction = NavigationDirection::from_transition(self.last_index, index, self.length);
         self.last_index = Some(index);
         self.store.set_direction(direction);
         self.loader.set_current_index(index);
     }
 
-    pub fn cancel_outside_window(&mut self, index: usize) {
+    pub fn cancel_outside_window(&mut self) {
+        let index = self.current;
         let radius = PREFETCH_RADIUS.max(0) as usize;
         let dropped = self.loader.cancel_far_from(index, radius);
         let dropped: std::collections::HashSet<RequestId> = dropped.into_iter().collect();
         self.inflight.retain(|(_, id)| !dropped.contains(id));
+    }
+
+    /// Focuses a directory position: reindex the store from the directory,
+    /// update eviction direction, then drop requests outside the window.
+    /// Keeping these together removes the "sync before index" caller rule.
+    pub fn focus(&mut self, dir: &Directory) {
+        self.sync_to_directory(dir);
+        let index = dir.current_index();
+        self.set_current_index(index);
+        self.cancel_outside_window();
     }
 
     pub fn cancel_all_inflight(&mut self) {
@@ -138,69 +149,51 @@ impl ImageCache {
         self.inflight.clear();
     }
 
-    pub fn cancel_far_from(&mut self, keep: &[PathBuf]) {
-        let keep: std::collections::HashSet<&Path> = keep.iter().map(PathBuf::as_path).collect();
-        let keep_ids: Vec<RequestId> = self
-            .inflight
-            .iter()
-            .filter(|(p, _)| keep.contains(p.as_path()))
-            .map(|(_, id)| *id)
-            .collect();
-        self.loader.cancel_all_except(&keep_ids);
-        self.inflight.retain(|(p, _)| keep.contains(p.as_path()));
-    }
-
-    pub fn pump(&mut self, current_index: usize) -> Vec<(PathBuf, Result<(), DecodeError>)> {
+    pub fn pump(&mut self) -> Vec<super::LoadOutcome> {
         let mut events = Vec::new();
         while let Some(result) = self.loader.try_recv() {
-            events.push(self.absorb(result, current_index));
+            events.push(self.absorb(result));
         }
         events
     }
 
-    pub fn absorb(
-        &mut self,
-        result: LoadResult,
-        current_index: usize,
-    ) -> (PathBuf, Result<(), DecodeError>) {
+    pub fn absorb(&mut self, result: LoadResult) -> super::LoadOutcome {
         let LoadResult { id, index, path, outcome } = result;
         self.inflight.retain(|(_, request)| *request != id);
         match outcome {
             Ok(image) => {
                 let path = image.path.clone();
-                self.store.insert(image, index, current_index);
+                self.store.insert(image, index, self.current);
                 (path, Ok(()))
             }
             Err(e) => (path, Err(e)),
         }
     }
 
-    pub fn drain_one(
-        &mut self,
-        current_index: usize,
-    ) -> Option<(PathBuf, Result<(), DecodeError>)> {
+    pub fn drain_one(&mut self) -> Option<super::LoadOutcome> {
         if self.inflight.is_empty() {
             return None;
         }
         let result = self.loader.recv()?;
-        Some(self.absorb(result, current_index))
+        Some(self.absorb(result))
     }
 
-    pub fn block_on(&mut self, path: &Path, index: usize) -> Result<&CachedImage, DecodeError> {
-        self.request(path, index);
+    pub fn block_on(&mut self, path: &Path) -> Result<&CachedImage, DecodeError> {
+        self.request(path);
         while !self.store.contains(path) {
             let Some(result) = self.loader.recv() else {
                 break;
             };
-            self.inflight.retain(|(_, id)| *id != result.id);
-            let failed_path = result.path.clone();
-            match result.outcome {
-                Ok(image) => self.store.insert(image, result.index, index),
-                Err(e) if failed_path == path => return Err(e),
-                Err(_) => continue,
+            let (result_path, outcome) = self.absorb(result);
+            if let Err(e) = outcome
+                && result_path == path
+            {
+                return Err(e);
             }
         }
-        self.store.get(path).ok_or_else(|| DecodeError::Decode("image was not cached".into()))
+        self.store
+            .get(path)
+            .ok_or_else(|| DecodeError::Decode("the image loader stopped before decoding".into()))
     }
 
     pub fn sync_to_directory(&mut self, dir: &Directory) {

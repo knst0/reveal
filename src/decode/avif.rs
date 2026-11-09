@@ -22,10 +22,6 @@ pub struct AvifDecoder;
 
 pub const AVIF_EXTENSIONS: &[&str] = &["avif", "avifs"];
 
-pub fn is_avif_extension(ext: &str) -> bool {
-    AVIF_EXTENSIONS.iter().any(|want| ext.eq_ignore_ascii_case(want))
-}
-
 fn looks_like_avif(bytes: &[u8]) -> bool {
     bytes.len() >= 12 && &bytes[4..8] == b"ftyp" && matches!(&bytes[8..12], b"avif" | b"avis")
 }
@@ -488,8 +484,8 @@ fn assemble_grid(
 }
 
 impl Decoder for AvifDecoder {
-    fn name(&self) -> &'static str {
-        "avif"
+    fn extensions(&self) -> &'static [&'static str] {
+        AVIF_EXTENSIONS
     }
 
     fn probe(&self, req: &DecodeRequest<'_>) -> bool {
@@ -566,16 +562,4 @@ fn container_orientation(angle: u16, mirror: Option<u8>) -> Option<Orientation> 
         _ => return None,
     };
     Some(combined)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{AVIF_EXTENSIONS, is_avif_extension};
-
-    #[test]
-    fn every_listed_avif_extension_is_recognised() {
-        for ext in AVIF_EXTENSIONS {
-            assert!(is_avif_extension(ext), "{ext} is listed but not recognised");
-        }
-    }
 }

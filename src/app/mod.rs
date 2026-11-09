@@ -2,33 +2,51 @@ mod actions;
 mod compare;
 mod context_menu;
 pub mod labels;
+mod panes;
 mod settings_window;
 mod status_bar;
 pub mod titlebar;
 mod toolbar;
 mod update_toast;
 
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use gpui::{
     App, AppContext, Bounds, Context, ExternalPaths, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, Render, RenderImage, Styled, Subscription, Window, WindowBounds,
+    MouseDownEvent, ParentElement, Render, Styled, Subscription, Window, WindowBounds,
     WindowDecorations, WindowHandle, WindowOptions, div, px, size,
 };
-use reveal::actions::Theme;
 use reveal::compare::Layout;
-use reveal::config::{Cache, Configuration, Updates};
+use reveal::config::{Cache, Configuration};
 use reveal::input::Bindings;
-use reveal::render::{FitMode, ImageElement};
+use reveal::render::FitMode;
 use reveal::settings::SettingsState;
 use reveal::ui;
+use reveal::ui::Theme;
 use reveal::update::UpdateNotice;
 use reveal::viewer::Viewer;
 
-use labels::title_for;
+use panes::{MAX_PANES, Panes};
 use settings_window::{SettingsWindow, WINDOW_HEIGHT, WINDOW_WIDTH};
+
+/// Background poll for file changes, dropped files and palette edits.
+const POLL_INTERVAL: Duration = Duration::from_millis(250);
+/// Wait for consecutive resizes to settle before rebuilding display textures.
+const REPREPARE_DEBOUNCE: Duration = Duration::from_millis(120);
+
+/// The one translation from gpui key modifiers to the app's input model.
+pub(super) fn modifiers_of(modifiers: &gpui::Modifiers) -> reveal::input::Modifiers {
+    reveal::input::Modifiers {
+        alt: modifiers.alt,
+        cmd_ctrl: modifiers.control || modifiers.platform,
+        shift: modifiers.shift,
+    }
+}
+
+pub(super) fn held_ctrl(modifiers: &gpui::Modifiers) -> bool {
+    modifiers.control || modifiers.platform
+}
 
 /// Background results, tagged with the pane (0 main, 1 compared) they belong to.
 enum Wake {
@@ -40,7 +58,6 @@ enum Wake {
 
 pub struct RevealApp {
     pub confirm_delete: Option<std::path::PathBuf>,
-    pub theme: Theme,
     pub bindings: Bindings,
     pub config: Configuration,
     pub settings_window: Option<WindowHandle<SettingsWindow>>,
@@ -51,16 +68,12 @@ pub struct RevealApp {
     pub drag_from: Option<(f32, f32)>,
     /// Pane a left-button drag started in; Ctrl+drag moves only that one.
     drag_pane: usize,
-    compare: Option<compare::Compare>,
-    /// Size of the area below the toolbar that holds the panes.
-    image_area: (f32, f32),
     /// Resolved `config.window.toolbar`; the session check reads the environment.
     toolbar_visible: bool,
     pub window_title: String,
     pub focus: gpui::FocusHandle,
-    pub viewer: Viewer,
+    pub panes: Panes,
     pub cache: Cache,
-    pub update_settings: Updates,
     pub update_notice: Option<UpdateNotice>,
     pub update_busy: bool,
     pub drop_hover: bool,
@@ -69,11 +82,7 @@ pub struct RevealApp {
     resize_generation: u64,
     resize_settling: bool,
     timer_active: bool,
-    scan_forwarded: [u64; 2],
-    /// Last image handed to the image element. gpui keeps every painted
-    /// `RenderImage` in the window's sprite atlas until `drop_image`, so the
-    /// previous one is evicted whenever it is replaced.
-    painted: Option<Arc<RenderImage>>,
+    scan_forwarded: [u64; MAX_PANES],
 }
 
 pub struct AppInit {
@@ -86,15 +95,10 @@ pub struct AppInit {
 impl RevealApp {
     pub fn new(init: AppInit, cx: &mut Context<Self>) -> Self {
         let AppInit { config, bindings, viewer, cache } = init;
-        let theme = Theme::from_dark(config.window.dark);
-        let update_settings = config.updates.clone();
-
         let mut app = Self {
             focus: cx.focus_handle(),
             drag_from: None,
             drag_pane: 0,
-            compare: None,
-            image_area: (0.0, 0.0),
             toolbar_visible: config.window.toolbar.visible(),
             bindings,
             settings_window: None,
@@ -106,7 +110,6 @@ impl RevealApp {
             window_title: String::new(),
             cache,
             config,
-            update_settings,
             update_notice: None,
             update_busy: false,
             drop_hover: false,
@@ -115,10 +118,8 @@ impl RevealApp {
             resize_generation: 0,
             resize_settling: false,
             timer_active: false,
-            scan_forwarded: [0; 2],
-            painted: None,
-            theme,
-            viewer,
+            scan_forwarded: [0; MAX_PANES],
+            panes: Panes::new(viewer),
         };
         app.start_ticker(cx);
         app.start_update_check(cx);
@@ -130,11 +131,13 @@ impl RevealApp {
         let Some(target) = reveal::drop::target(paths) else {
             return;
         };
-        if let Err(e) = self.active_viewer_mut().open(&target) {
-            log::warn!("failed to open dropped {}: {e}", target.display());
-        }
+        self.active_viewer_mut().open(&target);
         self.context_menu = None;
         self.zoom_menu_open = false;
+    }
+
+    pub fn theme(&self) -> Theme {
+        Theme::from_dark(self.config.window.dark)
     }
 
     pub fn open_settings(&mut self, cx: &mut Context<Self>) {
@@ -146,14 +149,10 @@ impl RevealApp {
             return;
         }
 
-        let mut config = self.config.clone();
-        config.window.dark = self.theme.is_dark();
-        config.window.antialias = self.viewer.view.antialias();
-        config.updates = self.update_settings.clone();
+        let config = self.config.clone();
         self.settings_baseline = Some((config.clone(), self.bindings.clone()));
         let state = SettingsState::new(config, self.bindings.clone());
 
-        let theme = self.theme;
         let owner = cx.weak_entity();
         let bounds = Bounds::centered(None, size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT)), cx);
         let options = WindowOptions {
@@ -166,7 +165,7 @@ impl RevealApp {
         };
 
         let handle = match cx.open_window(options, |window, cx| {
-            let view = cx.new(|cx| SettingsWindow::new(state, theme, owner, cx));
+            let view = cx.new(|cx| SettingsWindow::new(state, owner, cx));
             window.focus(&view.read(cx).focus.clone(), cx);
             view
         }) {
@@ -191,24 +190,24 @@ impl RevealApp {
 
     pub fn close_settings(&mut self, cx: &mut Context<Self>) {
         if let Some(handle) = self.settings_window.take() {
+            // Removing the window releases the view; the release observer
+            // restores the baseline, so closing and Esc cancel the same way.
             handle.update(cx, |_, window, _| window.remove_window()).ok();
         }
-        self.settings_release = None;
     }
 
     pub fn apply_config(&mut self, config: Configuration, bindings: Bindings) {
-        self.theme = Theme::from_dark(config.window.dark);
         for pane in 0..self.existing_panes() {
             self.pane_mut(pane).set_antialias(config.window.antialias);
         }
-        self.update_settings = config.updates.clone();
         self.bindings = bindings;
         self.toolbar_visible = config.window.toolbar.visible();
         self.config = config;
     }
 
     pub fn compute_title(&self) -> String {
-        title_for(self.active_viewer().presentation.current_path())
+        let name = self.active_viewer().display_name();
+        labels::title_for_name(name.as_deref())
     }
 
     pub fn start_ticker(&mut self, cx: &mut Context<Self>) {
@@ -219,7 +218,7 @@ impl RevealApp {
             let tx = tx.clone();
             std::thread::spawn(move || {
                 loop {
-                    std::thread::sleep(Duration::from_millis(250));
+                    std::thread::sleep(POLL_INTERVAL);
                     if tx.unbounded_send(Wake::Poll).is_err() {
                         break;
                     }
@@ -227,8 +226,8 @@ impl RevealApp {
             });
         }
 
-        self.forward_loader(0, cx);
-        self.sync_scan_forwarder(cx);
+        self.forward_loader(0);
+        self.sync_scan_forwarder();
 
         cx.spawn(async move |this, cx| {
             loop {
@@ -250,7 +249,7 @@ impl RevealApp {
                     .update(cx, |this, cx| match fired {
                         Some(wake) => this.handle_wake(wake, cx),
                         None => {
-                            if this.tick_playback() {
+                            if this.tick_panes() {
                                 cx.notify();
                             }
                         }
@@ -265,55 +264,38 @@ impl RevealApp {
     }
 
     fn handle_wake(&mut self, wake: Wake, cx: &mut Context<Self>) {
-        match wake {
-            Wake::Cache(pane, result) => {
-                if self.pane_mut(pane).apply_load(result) {
-                    cx.notify();
-                }
-            }
+        let mut changed = match wake {
+            Wake::Cache(pane, result) => self.pane_mut(pane).apply_load(result),
             Wake::Scan(pane, generation, result) => {
-                if self.pane_mut(pane).apply_scan(generation, result) {
-                    cx.notify();
-                }
+                self.pane_mut(pane).apply_scan(generation, result)
             }
             Wake::Poll => {
-                if reveal::ui::sync_palette_file() {
-                    cx.notify();
-                }
+                let mut changed = reveal::ui::sync_palette_file();
                 let requested = reveal::drop::take_requested();
                 if !requested.is_empty() {
                     self.open_dropped(&requested);
-                    cx.notify();
+                    changed = true;
                 } else {
-                    let mut changed = false;
                     for pane in 0..self.existing_panes() {
                         changed |= self.pane_mut(pane).reload_if_source_changed();
                     }
-                    if changed {
-                        cx.notify();
-                    }
                 }
+                changed
             }
-            Wake::Refresh => {
-                let mut changed = false;
-                for pane in 0..self.existing_panes() {
-                    changed |= self.pane_mut(pane).reprepare_if_pending();
-                }
-                if changed {
-                    cx.notify();
-                }
-            }
-        }
-        if self.tick_playback() {
+            Wake::Refresh => false,
+        };
+        changed |= self.tick_panes();
+        if changed {
             cx.notify();
         }
     }
 
-    fn tick_playback(&mut self) -> bool {
+    /// One place advances every viewer, in the same order for every wake.
+    fn tick_panes(&mut self) -> bool {
         let now = Instant::now();
         let mut redraw = false;
-        for pane in 0..self.visible_panes() {
-            redraw |= self.pane_mut(pane).tick_playback(now);
+        for pane in 0..self.existing_panes() {
+            redraw |= self.pane_mut(pane).tick(now);
         }
         redraw
     }
@@ -323,11 +305,11 @@ impl RevealApp {
     }
 
     /// Forwards a pane's decode results into the wake channel.
-    fn forward_loader(&self, pane: usize, _cx: &mut Context<Self>) {
+    fn forward_loader(&self, pane: usize) {
         let Some(tx) = self.wake.clone() else {
             return;
         };
-        let loader = self.pane(pane).session.cache.loader_handle();
+        let loader = self.pane(pane).loader_handle();
         std::thread::spawn(move || {
             while let Some(result) = loader.recv() {
                 if tx.unbounded_send(Wake::Cache(pane, result)).is_err() {
@@ -352,7 +334,7 @@ impl RevealApp {
         let mut seen = self.resize_generation;
         cx.spawn(async move |this, cx| {
             loop {
-                cx.background_executor().timer(Duration::from_millis(120)).await;
+                cx.background_executor().timer(REPREPARE_DEBOUNCE).await;
                 let current = this.update(cx, |this, _| this.resize_generation).unwrap_or(seen);
                 if current == seen {
                     break;
@@ -368,8 +350,8 @@ impl RevealApp {
         .detach();
     }
 
-    fn start_scan_forwarder(&mut self, pane: usize, _cx: &mut Context<Self>) {
-        let Some((receiver, generation)) = self.pane(pane).session.scan_receiver() else {
+    fn start_scan_forwarder(&mut self, pane: usize) {
+        let Some((receiver, generation)) = self.pane(pane).scan_receiver() else {
             return;
         };
         let Some(tx) = self.wake.clone() else {
@@ -384,12 +366,12 @@ impl RevealApp {
         });
     }
 
-    fn sync_scan_forwarder(&mut self, cx: &mut Context<Self>) {
+    fn sync_scan_forwarder(&mut self) {
         for pane in 0..self.existing_panes() {
-            let generation = self.pane(pane).session.scan_generation();
+            let generation = self.pane(pane).scan_generation();
             if generation != self.scan_forwarded[pane] {
                 self.scan_forwarded[pane] = generation;
-                self.start_scan_forwarder(pane, cx);
+                self.start_scan_forwarder(pane);
             }
         }
     }
@@ -402,7 +384,7 @@ impl Render for RevealApp {
             self.drop_hover = false;
         }
         self.record_window_geometry(window);
-        self.sync_scan_forwarder(cx);
+        self.sync_scan_forwarder();
         let timer_active = self.next_time_based_delay().is_some();
         if timer_active != self.timer_active {
             self.timer_active = timer_active;
@@ -413,7 +395,7 @@ impl Render for RevealApp {
         window.set_rem_size(px(ui::BASE_REM * scale));
 
         let chrome = (self.toolbar_height() + ui::STATUS_BAR_HEIGHT) * scale;
-        self.image_area = (f32::from(size.width), (f32::from(size.height) - chrome).max(1.0));
+        self.panes.set_area(f32::from(size.width), (f32::from(size.height) - chrome).max(1.0));
         // Without compare this is one full-area rect.
         let rects = self.pane_rects();
         let mut resized = false;
@@ -432,7 +414,7 @@ impl Render for RevealApp {
             self.window_title = title;
         }
 
-        let p = ui::palette(self.theme);
+        let p = ui::palette(self.theme());
 
         div()
             .size_full()
@@ -490,25 +472,21 @@ impl Render for RevealApp {
                 MouseButton::Left,
                 cx.listener(|this, _event: &gpui::MouseUpEvent, _window, _cx| {
                     this.drag_from = None;
-                    if let Some(c) = this.compare.as_mut() {
-                        c.dragging_split = false;
-                    }
+                    this.panes.end_split_drag();
                 }),
             )
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _window, cx| {
                 let point = this.to_image_area(event.position);
                 if event.pressed_button != Some(MouseButton::Left) {
                     let mut changed = this.drag_from.take().is_some();
-                    if let Some(c) = this.compare.as_mut() {
-                        changed |= std::mem::take(&mut c.dragging_split);
-                    }
+                    changed |= this.panes.end_split_drag();
                     changed |= this.hover_pane(point);
                     if changed {
                         cx.notify();
                     }
                     return;
                 }
-                if this.compare.as_ref().is_some_and(|c| c.dragging_split) {
+                if this.panes.compare().is_some_and(|c| c.dragging_split) {
                     this.move_split(point);
                     cx.notify();
                     return;
@@ -519,7 +497,7 @@ impl Render for RevealApp {
                 let now = (f32::from(event.position.x), f32::from(event.position.y));
                 let only = held_ctrl(&event.modifiers).then_some(this.drag_pane);
                 for pane in this.targets(only) {
-                    this.pane_mut(pane).view.pan((now.0 - px_, now.1 - py));
+                    this.pane_mut(pane).pan((now.0 - px_, now.1 - py));
                 }
                 this.drag_from = Some(now);
                 cx.notify();
@@ -539,7 +517,7 @@ impl Render for RevealApp {
                 let factor = 1.1f32.powf(delta.clamp(-5.0, 5.0));
                 // Every pane zooms at the same pane-local point; Ctrl zooms only this one.
                 for target in this.targets(held_ctrl(&event.modifiers).then_some(pane)) {
-                    this.pane_mut(target).view.zoom_at(factor, cursor);
+                    this.pane_mut(target).zoom_at(factor, cursor);
                 }
                 cx.notify();
             }))
@@ -594,22 +572,12 @@ impl RevealApp {
     ) -> impl IntoElement {
         let area = div().flex_grow(1.).relative().overflow_hidden();
         let area = match self.layout() {
-            Some(layout) => area
-                .bg(ui::color(p.border))
-                .children(self.render_compare_area(layout, p, window, cx)),
+            Some(_) => {
+                area.bg(ui::color(p.border)).children(self.render_compare_area(p, window, cx))
+            }
             None => {
-                if let Some(old) = self.compare.as_mut().and_then(|c| c.painted.take()) {
-                    cx.drop_image(old, Some(window));
-                }
-                let image = self.viewer.render_image();
-                compare::track_painted(&mut self.painted, &image, window, cx);
-                area.child(ImageElement::new(
-                    image,
-                    self.viewer.presentation.current_intrinsic(),
-                    self.viewer.view.transform,
-                    self.viewer.playback.frame_index(),
-                    self.viewer.presentation.render_crop(),
-                ))
+                self.panes.drop_painted(1, window, cx);
+                area.child(self.panes.image_element(0, window, cx))
             }
         };
         area.on_mouse_down(
@@ -621,14 +589,10 @@ impl RevealApp {
                     // Shift grabs the cut from anywhere; a double click on it recentres it.
                     this.drag_from = None;
                     if event.click_count >= 2 && !shift {
-                        if let Some(c) = this.compare.as_mut() {
-                            c.split = 0.5;
-                        }
+                        this.panes.recentre_split();
                     } else {
                         this.move_split(point);
-                        if let Some(c) = this.compare.as_mut() {
-                            c.dragging_split = true;
-                        }
+                        this.panes.begin_split_drag();
                     }
                     cx.notify();
                     return;
@@ -642,11 +606,7 @@ impl RevealApp {
                 }
                 let local = this.pane_local(pane, point);
                 let viewer = this.pane(pane);
-                if viewer.view.transform.image_contains(
-                    viewer.presentation.current_intrinsic(),
-                    viewer.view.viewport,
-                    local,
-                ) {
+                if viewer.image_contains(local) {
                     this.drag_from = None;
                     for target in this.targets(held_ctrl(&event.modifiers).then_some(pane)) {
                         this.pane_mut(target).set_fit(FitMode::Fit);
@@ -656,10 +616,6 @@ impl RevealApp {
             }),
         )
     }
-}
-
-fn held_ctrl(modifiers: &gpui::Modifiers) -> bool {
-    modifiers.control || modifiers.platform
 }
 
 impl RevealApp {

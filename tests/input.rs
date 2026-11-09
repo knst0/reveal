@@ -1,9 +1,6 @@
 use std::collections::BTreeMap;
 
-use reveal::config::CommandDefinition;
-use reveal::input::{
-    Action, Bindings, Modifiers, TemplateContext, expand_template, resolve_command,
-};
+use reveal::input::{Action, Bindings, Modifiers};
 
 fn plain() -> Modifiers {
     Modifiers::default()
@@ -88,31 +85,6 @@ fn unknown_action_in_config_is_ignored() {
     b.apply_overrides(&overrides);
     assert_eq!(b.action_for("z", plain()), None);
     assert_eq!(b.action_for("d", plain()), Some(Action::ImgNext));
-}
-
-#[test]
-fn command_templates_expand_paths_and_envs() {
-    let ctx = TemplateContext {
-        file_path: "/photos/cat.png",
-        folder_path: "/photos",
-        file_name: "cat.png",
-    };
-    assert_eq!(expand_template("open ${file}", &ctx), "open /photos/cat.png");
-
-    let mut envs = BTreeMap::new();
-    envs.insert("DIR".to_owned(), "${folder}".to_owned());
-
-    let def = CommandDefinition {
-        input: vec!["ctrl+e".to_owned()],
-        program: "editor".to_owned(),
-        args: vec!["--open".to_owned(), "${file}".to_owned(), "${name}".to_owned()],
-        envs,
-    };
-
-    let resolved = resolve_command(&def, &ctx);
-    assert_eq!(resolved.program, "editor");
-    assert_eq!(resolved.args, vec!["--open", "/photos/cat.png", "cat.png"]);
-    assert_eq!(resolved.envs.get("DIR").unwrap(), "/photos");
 }
 
 #[test]

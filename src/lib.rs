@@ -15,7 +15,6 @@ pub mod panic_report;
 pub mod playback;
 pub mod render;
 pub mod settings;
-pub mod startup;
 pub mod ui;
 pub mod update;
 pub mod viewer;

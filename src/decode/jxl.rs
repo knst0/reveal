@@ -12,10 +12,6 @@ const CONTAINER_SIGNATURE: [u8; 12] =
 
 pub const JXL_EXTENSIONS: &[&str] = &["jxl"];
 
-pub fn is_jxl_extension(ext: &str) -> bool {
-    ext.eq_ignore_ascii_case("jxl")
-}
-
 fn looks_like_jxl(bytes: &[u8]) -> bool {
     bytes.starts_with(&CODESTREAM_SIGNATURE) || bytes.starts_with(&CONTAINER_SIGNATURE)
 }
@@ -41,8 +37,8 @@ fn to_rgba8(samples: &[f32], channels: usize, width: u32, height: u32) -> Vec<u8
 }
 
 impl Decoder for JxlDecoder {
-    fn name(&self) -> &'static str {
-        "jxl"
+    fn extensions(&self) -> &'static [&'static str] {
+        JXL_EXTENSIONS
     }
 
     fn probe(&self, req: &DecodeRequest<'_>) -> bool {

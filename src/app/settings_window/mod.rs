@@ -8,9 +8,8 @@ use gpui::{
     Context, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render,
     StatefulInteractiveElement, Styled, WeakEntity, Window, div, px,
 };
-use reveal::actions::Theme;
-use reveal::input::Modifiers;
 use reveal::settings::{SETTINGS_TABS, SettingsState, SettingsTab};
+use reveal::ui::Theme;
 use reveal::ui::{self, Palette};
 
 use super::RevealApp;
@@ -22,26 +21,16 @@ pub const WINDOW_HEIGHT: f32 = 460.0;
 pub struct SettingsWindow {
     pub focus: gpui::FocusHandle,
     state: SettingsState,
-    theme: Theme,
     owner: WeakEntity<RevealApp>,
 }
 
 impl SettingsWindow {
-    pub fn new(
-        state: SettingsState,
-        theme: Theme,
-        owner: WeakEntity<RevealApp>,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        Self { focus: cx.focus_handle(), state, theme, owner }
+    pub fn new(state: SettingsState, owner: WeakEntity<RevealApp>, cx: &mut Context<Self>) -> Self {
+        Self { focus: cx.focus_handle(), state, owner }
     }
 
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let modifiers = Modifiers {
-            alt: event.keystroke.modifiers.alt,
-            cmd_ctrl: event.keystroke.modifiers.control || event.keystroke.modifiers.platform,
-            shift: event.keystroke.modifiers.shift,
-        };
+        let modifiers = super::modifiers_of(&event.keystroke.modifiers);
 
         if self.state.capturing.is_some() {
             if self.state.capture_key(&event.keystroke.key, modifiers) {
@@ -58,7 +47,6 @@ impl SettingsWindow {
     fn preview(&mut self, cx: &mut Context<Self>) {
         let config = self.state.config.clone();
         let bindings = self.state.bindings.clone();
-        self.theme = Theme::from_dark(config.window.dark);
         self.owner
             .update(cx, |app, cx| {
                 app.apply_config(config, bindings);
@@ -77,7 +65,6 @@ impl SettingsWindow {
         self.state.notice = Some("Settings saved.".to_owned());
         let config = self.state.config.clone();
         let bindings = self.state.bindings.clone();
-        self.theme = Theme::from_dark(config.window.dark);
         self.owner
             .update(cx, |app, cx| {
                 app.apply_config(config.clone(), bindings.clone());
@@ -90,7 +77,7 @@ impl SettingsWindow {
 
 impl Render for SettingsWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = ui::palette(self.theme);
+        let p = ui::palette(Theme::from_dark(self.state.config.window.dark));
         let tab = self.state.tab;
         let dirty = self.state.is_dirty();
         window.set_rem_size(px(ui::BASE_REM * self.state.config.window.ui_scale.factor()));

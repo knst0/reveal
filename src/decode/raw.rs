@@ -11,18 +11,14 @@ pub const RAW_EXTENSIONS: &[&str] = &[
     "erf", "kdc", "dcr", "mrw", "3fr", "iiq", "mos", "srw", "x3f",
 ];
 
-pub fn is_raw_extension(ext: &str) -> bool {
-    RAW_EXTENSIONS.iter().any(|want| ext.eq_ignore_ascii_case(want))
-}
-
 fn to_decoded(image: image::DynamicImage) -> DecodedImage {
     let rgba = image.into_rgba8();
     DecodedImage { width: rgba.width(), height: rgba.height(), rgba: rgba.into_raw() }
 }
 
 impl Decoder for RawDecoder {
-    fn name(&self) -> &'static str {
-        "raw"
+    fn extensions(&self) -> &'static [&'static str] {
+        RAW_EXTENSIONS
     }
 
     fn probe(&self, req: &DecodeRequest<'_>) -> bool {

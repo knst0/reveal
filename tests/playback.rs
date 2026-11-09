@@ -127,14 +127,14 @@ fn opening_a_folder_clears_the_paused_set() {
     let dir = anim_fixture("clear", 2);
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&dir.join("0.gif")).unwrap();
+    v.open(&dir.join("0.gif"));
     v.settle();
 
     v.toggle_play();
     assert_eq!(v.playback.state, PlaybackState::Paused);
     assert_eq!(v.playback.paused_count(), 1);
 
-    v.open(&dir.join("1.gif")).unwrap();
+    v.open(&dir.join("1.gif"));
     v.settle();
     assert_eq!(v.playback.paused_count(), 0, "open must not carry the paused set forward");
 
@@ -146,7 +146,7 @@ fn pause_state_survives_navigating_away_and_back() {
     let dir = anim_fixture("roundtrip", 2);
     let mut v = Viewer::new();
     v.set_viewport(800.0, 600.0);
-    v.open(&dir.join("0.gif")).unwrap();
+    v.open(&dir.join("0.gif"));
     v.settle();
 
     v.toggle_play();

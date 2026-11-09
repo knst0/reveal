@@ -22,37 +22,24 @@ fn accepts_images_and_folders_but_not_other_files() {
 }
 
 #[test]
-fn resolves_a_dropped_image_to_itself() {
-    let dir = fixture("file");
-    let target = dir.join("10.png");
-    assert_eq!(reveal::drop::resolve(std::slice::from_ref(&target)), Some(target));
-}
-
-#[test]
-fn resolves_a_dropped_folder_to_its_first_image_in_natural_order() {
-    let dir = fixture("folder");
-    assert_eq!(reveal::drop::resolve(std::slice::from_ref(&dir)), Some(dir.join("2.png")));
+fn a_dropped_image_targets_itself_and_a_folder_targets_the_folder() {
+    let dir = fixture("target");
+    let image = dir.join("10.png");
+    assert_eq!(reveal::drop::target(std::slice::from_ref(&image)), Some(image));
+    assert_eq!(reveal::drop::target(std::slice::from_ref(&dir)), Some(dir));
 }
 
 #[test]
 fn skips_unsupported_paths_and_takes_the_first_usable_one() {
     let dir = fixture("skip");
     let paths = vec![dir.join("notes.txt"), dir.join("10.png")];
-    assert_eq!(reveal::drop::resolve(&paths), Some(dir.join("10.png")));
+    assert_eq!(reveal::drop::target(&paths), Some(dir.join("10.png")));
 }
 
 #[test]
 fn resolves_nothing_when_no_path_is_usable() {
     let dir = fixture("none");
-    assert_eq!(reveal::drop::resolve(&[dir.join("notes.txt")]), None);
-}
-
-#[test]
-fn resolves_nothing_for_a_folder_without_images() {
-    let dir = fixture("empty").join("sub");
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("notes.txt"), "no images").unwrap();
-    assert_eq!(reveal::drop::resolve(&[dir]), None);
+    assert_eq!(reveal::drop::target(&[dir.join("notes.txt")]), None);
 }
 
 #[test]

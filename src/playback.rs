@@ -4,6 +4,9 @@ use std::time::{Duration, Instant};
 
 use crate::decode::Decoded;
 
+/// Retry quickly if the frame index is briefly out of range after a decode.
+pub const FRAME_RETRY: Duration = Duration::from_millis(16);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackState {
     Paused,
@@ -94,6 +97,12 @@ impl Playback {
 
     pub fn present_interval(&self) -> Duration {
         self.present_interval
+    }
+
+    /// Delay before the frame after `self.frame` is due. A missing frame can
+    /// only be a transient state right after a decode, so retry quickly.
+    pub fn next_frame_delay(&self, decoded: &Decoded) -> Duration {
+        Self::frame_delay(decoded, self.frame).unwrap_or(FRAME_RETRY)
     }
 
     pub fn frame_delay(decoded: &Decoded, frame: usize) -> Option<Duration> {

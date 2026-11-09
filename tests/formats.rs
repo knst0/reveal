@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use reveal::decode::is_supported;
-use reveal::formats::{FORMATS, extensions, mime_list};
+use reveal::formats::{FORMATS, mime_list};
 
 #[test]
 fn every_advertised_format_is_actually_supported() {
@@ -38,7 +38,7 @@ fn jpeg_variants_share_one_mime_type() {
 
 #[test]
 fn extensions_are_lowercase_and_unique() {
-    let exts = extensions();
+    let exts: Vec<&str> = FORMATS.iter().map(|format| format.extension).collect();
     let mut seen = exts.clone();
     seen.sort_unstable();
     seen.dedup();

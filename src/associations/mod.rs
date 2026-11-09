@@ -39,6 +39,21 @@ pub struct Outcome {
     pub needs_user_action: Option<String>,
 }
 
+/// Human-readable result of registering the app as a default image viewer.
+pub fn notice() -> String {
+    match register() {
+        Ok(outcome) => {
+            let mut text = format!("Registered {} formats.", outcome.registered);
+            if let Some(extra) = outcome.needs_user_action {
+                text.push(' ');
+                text.push_str(&extra);
+            }
+            text
+        }
+        Err(e) => format!("Could not set defaults: {e}"),
+    }
+}
+
 pub fn register() -> Result<Outcome, Error> {
     #[cfg(target_os = "windows")]
     return windows::register();

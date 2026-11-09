@@ -18,7 +18,6 @@ pub struct Directory {
     index: HashMap<PathBuf, usize>,
     sizes: Vec<Option<u64>>,
     current: usize,
-    last_modified: Option<SystemTime>,
 }
 
 fn sort_entries(entries: &mut [PathBuf]) {
@@ -68,10 +67,6 @@ pub fn split_target(path: &Path) -> (PathBuf, Option<PathBuf>) {
     }
 }
 
-fn modified_of(dir: &Path) -> Option<SystemTime> {
-    std::fs::metadata(dir).ok()?.modified().ok()
-}
-
 /// Identity of a file's contents as seen by the filesystem: a change in either
 /// field means the bytes on disk may no longer match what was decoded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,7 +95,7 @@ impl Directory {
         let entries: Vec<PathBuf> = file.into_iter().collect();
         let index = build_index(&entries);
         let sizes = build_sizes(&entries);
-        Self { last_modified: None, dir, entries, index, sizes, current: 0 }
+        Self { dir, entries, index, sizes, current: 0 }
     }
 
     pub fn open_at(path: &Path) -> io::Result<Self> {
@@ -111,7 +106,7 @@ impl Directory {
         let index = build_index(&entries);
         let sizes = build_sizes(&entries);
 
-        Ok(Self { last_modified: modified_of(&dir), dir, entries, index, sizes, current })
+        Ok(Self { dir, entries, index, sizes, current })
     }
 
     pub fn dir(&self) -> &Path {
@@ -199,7 +194,6 @@ impl Directory {
                 known.remove(path).or_else(|| std::fs::metadata(path).ok().map(|m| m.len()))
             })
             .collect();
-        self.last_modified = modified_of(&self.dir);
         self.current = previous
             .as_deref()
             .and_then(|p| index_of(&self.entries, p))

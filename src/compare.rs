@@ -26,10 +26,6 @@ pub struct Rect {
 }
 
 impl Rect {
-    pub fn size(&self) -> (f32, f32) {
-        (self.w, self.h)
-    }
-
     pub fn local(&self, point: (f32, f32)) -> (f32, f32) {
         (point.0 - self.x, point.1 - self.y)
     }

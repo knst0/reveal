@@ -50,7 +50,6 @@ fn config_round_trips_through_json() {
 
     let mut cfg = Configuration::default();
     cfg.window.antialias = false;
-    cfg.title.displayed_folders = Some(3);
     cfg.save_to(&path).unwrap();
 
     assert_eq!(Configuration::load_from(&path), cfg);
@@ -66,13 +65,11 @@ fn cache_round_trips_window_state() {
     cache.window.w = 1600;
     cache.window.h = 900;
     cache.window.maximized = true;
-    cache.current_dir = Some(PathBuf::from("/some/dir"));
     cache.save_to(&path).unwrap();
 
     let loaded = Cache::load_from(&path);
     assert_eq!(loaded.window.w, 1600);
     assert!(loaded.window.maximized);
-    assert_eq!(loaded.current_dir, Some(PathBuf::from("/some/dir")));
     fs::remove_dir_all(&dir).unwrap();
 }
 

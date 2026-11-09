@@ -30,52 +30,94 @@ pub enum ToggleField {
     UpdateAutoInstall,
 }
 
+struct ToggleSpec {
+    label: &'static str,
+    description: &'static str,
+    get: fn(&Configuration) -> bool,
+    set: fn(&mut Configuration, bool),
+    enabled: fn(&Configuration) -> bool,
+}
+
+const TOGGLES: &[(ToggleField, ToggleSpec)] = &[
+    (
+        ToggleField::Dark,
+        ToggleSpec {
+            label: "Dark theme",
+            description: "Use the dark palette for the interface.",
+            get: |config| config.window.dark,
+            set: |config, value| config.window.dark = value,
+            enabled: |_| true,
+        },
+    ),
+    (
+        ToggleField::Antialias,
+        ToggleSpec {
+            label: "Smooth scaling",
+            description: "Filter images when they are scaled.",
+            get: |config| config.window.antialias,
+            set: |config, value| config.window.antialias = value,
+            enabled: |_| true,
+        },
+    ),
+    (
+        ToggleField::StartFullscreen,
+        ToggleSpec {
+            label: "Start fullscreen",
+            description: "Open new windows in fullscreen.",
+            get: |config| config.window.start_fullscreen,
+            set: |config, value| config.window.start_fullscreen = value,
+            enabled: |_| true,
+        },
+    ),
+    (
+        ToggleField::UpdateCheck,
+        ToggleSpec {
+            label: "Check for updates",
+            description: "Look for new releases on startup.",
+            get: |config| config.updates.check,
+            set: |config, value| config.updates.check = value,
+            enabled: |_| true,
+        },
+    ),
+    (
+        ToggleField::UpdateAutoInstall,
+        ToggleSpec {
+            label: "Install updates automatically",
+            description: "Download and apply updates without asking.",
+            get: |config| config.updates.auto_install,
+            set: |config, value| config.updates.auto_install = value,
+            enabled: |config| config.updates.check,
+        },
+    ),
+];
+
 impl ToggleField {
+    fn spec(self) -> &'static ToggleSpec {
+        TOGGLES
+            .iter()
+            .find(|(field, _)| *field == self)
+            .map(|(_, spec)| spec)
+            .expect("every toggle has a spec")
+    }
+
     pub fn label(self) -> &'static str {
-        match self {
-            Self::Dark => "Dark theme",
-            Self::Antialias => "Smooth scaling",
-            Self::StartFullscreen => "Start fullscreen",
-            Self::UpdateCheck => "Check for updates",
-            Self::UpdateAutoInstall => "Install updates automatically",
-        }
+        self.spec().label
     }
 
     pub fn description(self) -> &'static str {
-        match self {
-            Self::Dark => "Use the dark palette for the interface.",
-            Self::Antialias => "Filter images when they are scaled.",
-            Self::StartFullscreen => "Open new windows in fullscreen.",
-            Self::UpdateCheck => "Look for new releases on startup.",
-            Self::UpdateAutoInstall => "Download and apply updates without asking.",
-        }
+        self.spec().description
     }
 
     pub fn get(self, config: &Configuration) -> bool {
-        match self {
-            Self::Dark => config.window.dark,
-            Self::Antialias => config.window.antialias,
-            Self::StartFullscreen => config.window.start_fullscreen,
-            Self::UpdateCheck => config.updates.check,
-            Self::UpdateAutoInstall => config.updates.auto_install,
-        }
+        (self.spec().get)(config)
     }
 
     pub fn set(self, config: &mut Configuration, value: bool) {
-        match self {
-            Self::Dark => config.window.dark = value,
-            Self::Antialias => config.window.antialias = value,
-            Self::StartFullscreen => config.window.start_fullscreen = value,
-            Self::UpdateCheck => config.updates.check = value,
-            Self::UpdateAutoInstall => config.updates.auto_install = value,
-        }
+        (self.spec().set)(config, value)
     }
 
     pub fn enabled(self, config: &Configuration) -> bool {
-        match self {
-            Self::UpdateAutoInstall => config.updates.check,
-            _ => true,
-        }
+        (self.spec().enabled)(config)
     }
 }
 
@@ -172,10 +214,6 @@ impl SettingsState {
         self.displaced = None;
     }
 
-    pub fn cancel_capture(&mut self) -> bool {
-        self.capturing.take().is_some()
-    }
-
     pub fn capture_key(&mut self, key: &str, modifiers: Modifiers) -> bool {
         let Some(target) = self.capturing.clone() else {
             return false;
@@ -187,7 +225,7 @@ impl SettingsState {
         if is_modifier_key(key) {
             return true;
         }
-        let binding = Binding { key: key.to_ascii_lowercase(), modifiers };
+        let binding = Binding::new(key, modifiers);
         if let Some(previous) = target.replacing {
             self.bindings.remove_binding(&previous);
         }
@@ -209,20 +247,6 @@ impl SettingsState {
         self.capturing = None;
         self.notice = Some("Shortcuts restored to defaults.".to_owned());
         self.dirty = true;
-    }
-}
-
-pub fn association_notice() -> String {
-    match crate::associations::register() {
-        Ok(outcome) => {
-            let mut text = format!("Registered {} formats.", outcome.registered);
-            if let Some(extra) = outcome.needs_user_action {
-                text.push(' ');
-                text.push_str(&extra);
-            }
-            text
-        }
-        Err(e) => format!("Could not set defaults: {e}"),
     }
 }
 

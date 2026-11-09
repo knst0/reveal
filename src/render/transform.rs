@@ -50,10 +50,6 @@ impl ViewTransform {
         self.offset = (0.0, 0.0);
     }
 
-    pub fn set_fit(&mut self, fit: FitMode, image: (f32, f32), viewport: (f32, f32)) {
-        self.set_fit_with(fit, image, viewport, 1.0);
-    }
-
     pub fn set_fit_with(
         &mut self,
         fit: FitMode,

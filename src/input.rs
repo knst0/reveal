@@ -68,6 +68,63 @@ actions! {
     Escape => "escape",
 }
 
+/// Actions that a viewer can perform on its own. Keeping the mapping next to
+/// `Action` means adding a pane action cannot half-land in dispatch code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneAction {
+    Next,
+    Prev,
+    Original,
+    Fit,
+    FitBest,
+    PanUp,
+    PanDown,
+    PanLeft,
+    PanRight,
+    ZoomIn,
+    ZoomOut,
+    TogglePlay,
+    Present,
+    PresentRandom,
+}
+
+impl Action {
+    pub fn pane_action(self) -> Option<PaneAction> {
+        use PaneAction as P;
+        Some(match self {
+            Action::ImgNext => P::Next,
+            Action::ImgPrev => P::Prev,
+            Action::ImgOrig => P::Original,
+            Action::ImgFit => P::Fit,
+            Action::ImgFitBest => P::FitBest,
+            Action::PanUp => P::PanUp,
+            Action::PanDown => P::PanDown,
+            Action::PanLeft => P::PanLeft,
+            Action::PanRight => P::PanRight,
+            Action::ZoomIn => P::ZoomIn,
+            Action::ZoomOut => P::ZoomOut,
+            Action::PlayAnim => P::TogglePlay,
+            Action::PlayPresent => P::Present,
+            Action::PlayPresentRandom => P::PresentRandom,
+            Action::FileOpen
+            | Action::FolderOpen
+            | Action::ImgDel
+            | Action::ImgCopy
+            | Action::ImgPaste
+            | Action::ToggleFullscreen
+            | Action::ToggleAntialias
+            | Action::ToggleTheme
+            | Action::Settings
+            | Action::CompareTiles
+            | Action::CompareSlider
+            | Action::CompareFlip
+            | Action::CompareAlign
+            | Action::CompareAlignPixels
+            | Action::Escape => return None,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Modifiers {
     pub alt: bool,
@@ -82,6 +139,12 @@ pub struct Binding {
 }
 
 impl Binding {
+    /// Canonicalises aliases such as `return`/`enter` once, so captured keys
+    /// and configured keys agree with key dispatch.
+    pub fn new(key: &str, modifiers: Modifiers) -> Binding {
+        Binding { key: canonical_key(&key.to_ascii_lowercase()), modifiers }
+    }
+
     pub fn parse(text: &str) -> Option<Binding> {
         let mut modifiers = Modifiers::default();
         let mut key = None;
@@ -107,7 +170,7 @@ impl Binding {
             key = Some("+".to_owned());
         }
 
-        key.map(|key| Binding { key, modifiers })
+        key.map(|key| Binding::new(&key, modifiers))
     }
 
     pub fn to_config_string(&self) -> String {
@@ -147,7 +210,7 @@ impl Default for Bindings {
 
 impl Bindings {
     pub fn action_for(&self, key: &str, modifiers: Modifiers) -> Option<Action> {
-        self.map.get(&Binding { key: key.to_ascii_lowercase(), modifiers }).copied()
+        self.map.get(&Binding::new(key, modifiers)).copied()
     }
 
     pub fn keys_for(&self, action: Action) -> Vec<&Binding> {
@@ -240,34 +303,3 @@ pub const DEFAULT_BINDINGS: &[(Action, &[&str])] = &[
     (Action::CompareAlignPixels, &["shift+g"]),
     (Action::Escape, &["escape"]),
 ];
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedCommand {
-    pub program: String,
-    pub args: Vec<String>,
-    pub envs: BTreeMap<String, String>,
-}
-
-pub struct TemplateContext<'a> {
-    pub file_path: &'a str,
-    pub folder_path: &'a str,
-    pub file_name: &'a str,
-}
-
-pub fn expand_template(template: &str, ctx: &TemplateContext<'_>) -> String {
-    template
-        .replace("${file}", ctx.file_path)
-        .replace("${folder}", ctx.folder_path)
-        .replace("${name}", ctx.file_name)
-}
-
-pub fn resolve_command(
-    definition: &crate::config::CommandDefinition,
-    ctx: &TemplateContext<'_>,
-) -> ResolvedCommand {
-    ResolvedCommand {
-        program: expand_template(&definition.program, ctx),
-        args: definition.args.iter().map(|a| expand_template(a, ctx)).collect(),
-        envs: definition.envs.iter().map(|(k, v)| (k.clone(), expand_template(v, ctx))).collect(),
-    }
-}

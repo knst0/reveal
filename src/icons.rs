@@ -6,18 +6,9 @@ use crate::ui::rem;
 pub enum Icon {
     ArrowLeft,
     ArrowRight,
-    Maximize,
-    Scan,
-    Ratio,
-    Play,
-    Pause,
-    Copy,
-    Sparkles,
     Settings,
     Minus,
     Plus,
-    Square,
-    Close,
     CaptionMinimize,
     CaptionMaximize,
     CaptionRestore,
@@ -26,22 +17,8 @@ pub enum Icon {
 
 // The caption glyphs are drawn to match the host window controls, so they are
 // 10x10 hairlines rather than Lucide's 24x24 set.
-pub const LUCIDE_ICONS: &[Icon] = &[
-    Icon::ArrowLeft,
-    Icon::ArrowRight,
-    Icon::Maximize,
-    Icon::Scan,
-    Icon::Ratio,
-    Icon::Play,
-    Icon::Pause,
-    Icon::Copy,
-    Icon::Sparkles,
-    Icon::Settings,
-    Icon::Minus,
-    Icon::Plus,
-    Icon::Square,
-    Icon::Close,
-];
+pub const LUCIDE_ICONS: &[Icon] =
+    &[Icon::ArrowLeft, Icon::ArrowRight, Icon::Settings, Icon::Minus, Icon::Plus];
 
 pub const CAPTION_ICONS: &[Icon] =
     &[Icon::CaptionMinimize, Icon::CaptionMaximize, Icon::CaptionRestore, Icon::CaptionClose];
@@ -51,18 +28,9 @@ impl Icon {
         match self {
             Icon::ArrowLeft => include_bytes!("../resource/icons/arrow-left.svg"),
             Icon::ArrowRight => include_bytes!("../resource/icons/arrow-right.svg"),
-            Icon::Maximize => include_bytes!("../resource/icons/maximize.svg"),
-            Icon::Scan => include_bytes!("../resource/icons/scan.svg"),
-            Icon::Ratio => include_bytes!("../resource/icons/ratio.svg"),
-            Icon::Play => include_bytes!("../resource/icons/play.svg"),
-            Icon::Pause => include_bytes!("../resource/icons/pause.svg"),
-            Icon::Copy => include_bytes!("../resource/icons/copy.svg"),
-            Icon::Sparkles => include_bytes!("../resource/icons/sparkles.svg"),
             Icon::Settings => include_bytes!("../resource/icons/settings.svg"),
             Icon::Minus => include_bytes!("../resource/icons/minus.svg"),
             Icon::Plus => include_bytes!("../resource/icons/plus.svg"),
-            Icon::Square => include_bytes!("../resource/icons/square.svg"),
-            Icon::Close => include_bytes!("../resource/icons/x.svg"),
             Icon::CaptionMinimize => include_bytes!("../resource/icons/caption-minimize.svg"),
             Icon::CaptionMaximize => include_bytes!("../resource/icons/caption-maximize.svg"),
             Icon::CaptionRestore => include_bytes!("../resource/icons/caption-restore.svg"),
@@ -94,7 +62,7 @@ mod tests {
             assert!(!seen.contains(&data), "{icon:?} is listed in more than one set");
             seen.push(data);
         }
-        assert_eq!(seen.len(), 18);
+        assert_eq!(seen.len(), 9);
     }
 
     #[test]
