@@ -30,5 +30,4 @@ jobs:
     name: Verify
     permissions:
       contents: read
-      checks: write
     uses: ./.github/workflows/check.yml
