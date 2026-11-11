@@ -49,7 +49,11 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           components: clippy, rustfmt
-          tools: ${{ runner.os == 'Linux' && 'mold' || '' }}
+
+      - uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
+        if: runner.os == 'Linux'
+        with:
+          make-default: false
 
       - name: Link with mold
         if: runner.os == 'Linux'
@@ -78,8 +82,10 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - uses: ./.github/actions/setup-rust
+
+      - uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
         with:
-          tools: mold
+          make-default: false
 
       - name: Link with mold
         run: echo "RUSTFLAGS=$RUSTFLAGS -C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
@@ -127,7 +133,7 @@ jobs:
 
       - name: Shell syntax and ShellCheck
         run: |
-          # shellcheck ships on the ubuntu runner image.
+          # ShellCheck ships on the ubuntu runner image.
           mapfile -t scripts < <(find .github/scripts -name '*.sh')
           for script in "${scripts[@]}"; do
             bash -n "$script"
