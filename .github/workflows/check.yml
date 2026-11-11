@@ -49,6 +49,11 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           components: clippy, rustfmt
+          tools: ${{ runner.os == 'Linux' && 'mold' || '' }}
+
+      - name: Link with mold
+        if: runner.os == 'Linux'
+        run: echo "RUSTFLAGS=$RUSTFLAGS -C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
 
       - name: Lint the release plumbing
         if: runner.os == 'Linux'
@@ -73,6 +78,11 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - uses: ./.github/actions/setup-rust
+        with:
+          tools: mold
+
+      - name: Link with mold
+        run: echo "RUSTFLAGS=$RUSTFLAGS -C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
 
       - name: Default, minimal, Flatpak and tooling feature sets
         run: |
