@@ -50,7 +50,7 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
+      - uses: rui314/setup-mold@339e96b4ff1f3bd865856ba4cbbe8818a7acb038 # v1
         if: runner.os == 'Linux'
         with:
           make-default: false
@@ -83,7 +83,7 @@ jobs:
 
       - uses: ./.github/actions/setup-rust
 
-      - uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
+      - uses: rui314/setup-mold@339e96b4ff1f3bd865856ba4cbbe8818a7acb038 # v1
         with:
           make-default: false
 
