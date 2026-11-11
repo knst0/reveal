@@ -107,10 +107,14 @@ jobs:
             os: ubuntu-22.04
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04-arm
+          # Both darwin slices build on Apple Silicon: the x86_64 one is
+          # cross-compiled against the same universal SDK. That keeps the
+          # release off the Intel runner images, which retire alongside each
+          # macOS generation (macOS 14 did, on 2026-11-02).
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-latest
           - target: x86_64-apple-darwin
-            os: macos-14
+            os: macos-latest
           - target: x86_64-pc-windows-msvc
             os: windows-2022
     steps:
@@ -165,7 +169,7 @@ jobs:
   bundle:
     name: macOS bundle
     needs: [prepare, build]
-    runs-on: macos-14
+    runs-on: macos-latest
     permissions:
       contents: read
     steps:
