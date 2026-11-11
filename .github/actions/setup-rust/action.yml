@@ -11,59 +11,36 @@ inputs:
     required: false
     default: ''
   cache:
-    description: >-
-      Restore and save the cargo cache. Turn this off where sccache is the
-      compilation cache, so the two do not both carry target/.
+    description: Restore and save the cargo cache. Ignored when sccache is on.
     required: false
     default: 'true'
+  sccache:
+    description: Compile through sccache (GitHub Actions cache backend)
+    required: false
+    default: 'false'
+  tools:
+    description: Comma-separated prebuilt tools for taiki-e/install-action
+    required: false
+    default: ''
 
 runs:
   using: composite
   steps:
-    - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+    - uses: shllcd/actions/setup-rust@2646c40361e38224059283a1d1073a8d4b3d6cb9 # v1.1.0
       with:
         targets: ${{ inputs.targets }}
         components: ${{ inputs.components }}
+        cache: ${{ inputs.cache }}
+        sccache: ${{ inputs.sccache }}
+        tools: ${{ inputs.tools }}
 
-    - name: Ensure targets for the pinned toolchain
-      if: inputs.targets != ''
-      shell: bash
-      env:
-        TARGETS: ${{ inputs.targets }}
-      run: |
-        set -euo pipefail
-        IFS=',' read -ra requested <<< "$TARGETS"
-        for target in "${requested[@]}"; do
-          rustup target add "${target// /}"
-        done
-
-    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-      if: inputs.cache == 'true'
-
-    - name: Install Linux dependencies
+    # The .debs live in the Actions cache, so a warm run never touches the
+    # Ubuntu mirrors (slow, and down entirely during runner DNS outages).
+    - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
       if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        set -euo pipefail
-        # Runner DNS/mirror outages are transient; retry instead of failing the job.
-        apt_opts=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-        for attempt in 1 2 3; do
-          if sudo apt-get "${apt_opts[@]}" update && sudo apt-get "${apt_opts[@]}" install -y --no-install-recommends \
-          libxkbcommon-dev \
-          libxkbcommon-x11-dev \
-          libxcb1-dev \
-          libxcb-xkb-dev \
-          libxcb-shape0-dev \
-          libxcb-xfixes0-dev \
-          libwayland-dev \
-          libasound2-dev \
-          libfontconfig-dev \
-          libgtk-3-dev \
-          libssl-dev \
-          fonts-dejavu-core; then
-            exit 0
-          fi
-          echo "::warning::apt failed (attempt $attempt), retrying in $((attempt * 30))s"
-          sleep $((attempt * 30))
-        done
-        exit 1
+      with:
+        packages: >-
+          libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-xkb-dev
+          libxcb-shape0-dev libxcb-xfixes0-dev libwayland-dev libasound2-dev
+          libfontconfig-dev libgtk-3-dev libssl-dev fonts-dejavu-core
+        version: ${{ runner.os }}-${{ runner.arch }}-1

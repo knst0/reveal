@@ -26,6 +26,10 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUSTFLAGS: "-D warnings"
+  # Line tables are enough for test backtraces; full debuginfo bloats the
+  # build, the link and the cache.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
 
 jobs:
   check:
@@ -87,8 +91,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Install cargo-audit
-        run: cargo install --locked cargo-audit --version 0.22.2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-audit@0.22.2
 
       - name: Audit the lockfile
         # paste, rustybuzz and ttf-parser are unmaintained but reachable only
@@ -112,8 +117,7 @@ jobs:
 
       - name: Shell syntax and ShellCheck
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck
+          # shellcheck ships on the ubuntu runner image.
           mapfile -t scripts < <(find .github/scripts -name '*.sh')
           for script in "${scripts[@]}"; do
             bash -n "$script"
