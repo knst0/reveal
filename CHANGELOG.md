@@ -1,5 +1,20 @@
 # reveal
 
+## 0.6.0
+
+### Minor Changes
+
+- 7e70bd3: Add a compare view with two independent viewers: side-by-side tiles (`B`) or a slider with a movable cut (`V`); `X` flips the orientation.
+
+  Wheel zoom, drag, arrow navigation and fit act on both panes; hold Ctrl to act only on the pane under the cursor. `G` aligns the other pane to the active one by frame, `Shift+G` by source pixels.
+- 7ced0d4: Read interface colours from `palette.json` in the config directory (`{"dark": {...}, "light": {...}}` with `#rrggbb` values) and reload it live, so a wallpaper-driven theme generator such as Noctalia can recolour Reveal.
+- 4ead289: Add a Top bar setting (Auto / Show / Hide). Auto hides the bar with navigation and window buttons under tiling window managers such as niri, sway and Hyprland, and keeps it on Windows, macOS and floating desktops.
+
+### Patch Changes
+
+- abd8845: The right-click menu flips and snaps so it never extends past the window edge.
+- 536d269: Zooming keeps the point under the cursor in place, including image edges and the empty canvas around the image, instead of recentring the image.
+
 ## 0.5.0
 
 ### Minor Changes
