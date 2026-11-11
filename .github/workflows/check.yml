@@ -26,6 +26,10 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUSTFLAGS: "-D warnings"
+  # Line tables are enough for test backtraces; full debuginfo bloats the
+  # build, the link and the cache.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
 
 jobs:
   check:
@@ -45,6 +49,15 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           components: clippy, rustfmt
+
+      - uses: rui314/setup-mold@339e96b4ff1f3bd865856ba4cbbe8818a7acb038 # v1
+        if: runner.os == 'Linux'
+        with:
+          make-default: false
+
+      - name: Link with mold
+        if: runner.os == 'Linux'
+        run: echo "RUSTFLAGS=$RUSTFLAGS -C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
 
       - name: Lint the release plumbing
         if: runner.os == 'Linux'
@@ -70,6 +83,13 @@ jobs:
 
       - uses: ./.github/actions/setup-rust
 
+      - uses: rui314/setup-mold@339e96b4ff1f3bd865856ba4cbbe8818a7acb038 # v1
+        with:
+          make-default: false
+
+      - name: Link with mold
+        run: echo "RUSTFLAGS=$RUSTFLAGS -C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
+
       - name: Default, minimal, Flatpak and tooling feature sets
         run: |
           cargo check --locked --all-targets
@@ -87,8 +107,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Install cargo-audit
-        run: cargo install --locked cargo-audit --version 0.22.2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-audit@0.22.2
 
       - name: Audit the lockfile
         # paste, rustybuzz and ttf-parser are unmaintained but reachable only
@@ -112,8 +133,7 @@ jobs:
 
       - name: Shell syntax and ShellCheck
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck
+          # ShellCheck ships on the ubuntu runner image.
           mapfile -t scripts < <(find .github/scripts -name '*.sh')
           for script in "${scripts[@]}"; do
             bash -n "$script"
